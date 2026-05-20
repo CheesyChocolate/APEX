@@ -1,0 +1,28 @@
+## ignore any data file
+
+# OncoLens data directories (large files not tracked)
+raw/
+processed/
+pubmed_abstracts/
+qdrant/
+
+*.7z
+*.bak
+*.cache
+*.csv
+*.db
+*.gz
+*.h5
+*.hdf5
+*.json
+*.log
+*.model
+*.parquet
+*.pickle
+*.pkl
+*.sqlite
+*.tar
+*.tmp
+*.xls
+*.xlsx
+*.zip
