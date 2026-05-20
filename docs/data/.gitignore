@@ -1,0 +1,4 @@
+# Ignore large result datasets; keep directory
+*.csv
+*.pkl
+*.json

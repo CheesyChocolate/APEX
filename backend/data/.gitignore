@@ -1,0 +1,4 @@
+# Ignore all generated content; keep directory structure via subdirectory .gitignore files
+cache/
+structures/
+models/
