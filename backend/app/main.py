@@ -35,6 +35,6 @@ def health():
     return {"status": "ok"}
 
 
-_frontend = Path(__file__).parents[3] / "frontend"
+_frontend = Path(__file__).parents[2] / "frontend"
 if _frontend.exists():
     app.mount("/", StaticFiles(directory=_frontend, html=True), name="frontend")

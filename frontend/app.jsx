@@ -5,7 +5,8 @@
 const { useState: aUseState, useEffect: aUseEffect, useRef: aUseRef, useMemo: aUseMemo, useCallback: aUseCallback } = React;
 
 // ── API helpers ───────────────────────────────────────────────────────────────
-const API = window.APEX_API_URL || null;
+// null → demo mode (mock data).  '' → same-origin.  'http://...' → explicit host.
+const API = (window.APEX_API_URL !== null && window.APEX_API_URL !== undefined) ? window.APEX_API_URL : null;
 
 async function apiRunQsar(targetId) {
   const res = await fetch(`${API}/qsar/${encodeURIComponent(targetId)}`, { method: 'POST' });
@@ -172,17 +173,21 @@ function App() {
     setElapsedMs(0);
 
     if (API) {
-      // Real backend mode
-      appendLog('info', `→ POST /qsar/${selectedTarget.target_chembl_id}`);
-      appendLog('info', `Fetching ChEMBL bioactivity and training QSAR model…`);
       const target = selectedTarget;
+      const t0 = Date.now();
+      appendLog('info', `→ POST /qsar/${target.target_chembl_id}`);
+      appendLog('info', `Querying ChEMBL for ${target.short} bioactivity data… (this takes ~2 min on first run)`);
       apiRunQsar(target.target_chembl_id)
         .then(data => {
+          const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
           const sorted = [...data.predictions].sort(
             (a, b) => b.activity_probability - a.activity_probability,
           );
+          const actives = sorted.filter(p => p.predicted_active).length;
           const qsar = normQsar(sorted, target.target_chembl_id);
-          appendLog('ok', `QSAR complete · ${qsar.length} predictions · top-${data.top_n.length} selected for docking`);
+          appendLog('info', `  ${sorted.length} compounds processed`);
+          appendLog('info', `  ${actives} predicted active (p > 0.5)`);
+          appendLog('ok', `QSAR complete · ${elapsed}s · top-${data.top_n.length} forwarded to docking`);
           setQsarResults(qsar);
           setPipelineStatus('qsar-done');
           if (runMode === 'auto') setTimeout(() => runDocking(qsar, target), 300);
@@ -212,12 +217,20 @@ function App() {
     setLogLines(prev => [...prev, { level: 'info', text: '', timestamp: '', _sep: true }]);
 
     if (API) {
+      const t0 = Date.now();
       appendLog('info', `→ POST /docking/  uniprot=${target.uniprot}  n_ligands=20`);
-      appendLog('info', `Fetching structure for UniProt ${target.uniprot} and running AutoDock Vina…`);
+      appendLog('info', `Fetching AlphaFold structure for ${target.uniprot}…`);
+      appendLog('info', `Preparing receptor + ligands, running AutoDock Vina… (~5 min)`);
       const top20 = qsar.slice(0, 20).map(r => r.smiles);
       apiRunDocking(target.uniprot, top20, target.pdb)
         .then(results => {
-          appendLog('ok', `Docking complete · top affinity = ${results[0]?.affinity_kcal_mol?.toFixed(1) ?? 'n/a'} kcal/mol`);
+          const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+          const scored = results.filter(r => r.affinity_kcal_mol !== null);
+          const best = Math.min(...scored.map(r => r.affinity_kcal_mol));
+          const strong = scored.filter(r => r.affinity_kcal_mol <= -9.0).length;
+          appendLog('info', `  ${scored.length}/${results.length} ligands docked successfully`);
+          if (strong > 0) appendLog('info', `  ${strong} compound(s) with ΔG ≤ −9.0 kcal/mol`);
+          appendLog('ok', `Docking complete · ${elapsed}s · best affinity = ${best.toFixed(2)} kcal/mol`);
           setDockingResults(results);
           setPipelineStatus('done');
         })
