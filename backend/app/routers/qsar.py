@@ -24,8 +24,7 @@ def run_qsar(chembl_target_id: str):
         model_path = qsar_pipeline.train(
             smiles_train, y_train, smiles_test, y_test, chembl_target_id
         )
-        all_smiles = smiles_train + smiles_test
-        predictions = qsar_pipeline.predict(all_smiles, model_path)
+        predictions = qsar_pipeline.predict(smiles_test, model_path)
     except QSARError as e:
         raise HTTPException(status_code=422, detail=str(e))
 

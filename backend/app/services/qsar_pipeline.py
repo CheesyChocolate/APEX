@@ -78,17 +78,30 @@ def predict(smiles_list: list[str], model_path: Path) -> list[dict]:
     with open(model_path, "rb") as f:
         model = pickle.load(f)
 
-    X = featurize(smiles_list)
+    results = []
+    valid_smiles, mols = [], []
+    for smi in smiles_list:
+        mol = MolFromSmiles(smi)
+        if mol is not None:
+            valid_smiles.append(smi)
+            mols.append(mol)
+
+    X = featurize(valid_smiles)
     probs = model.predict_proba(X)[:, 1]
     labels = model.predict(X)
 
-    results = [
-        {
-            "smiles": smi,
-            "activity_probability": float(prob),
-            "predicted_active": bool(label),
-        }
-        for smi, prob, label in zip(smiles_list, probs, labels)
-    ]
+    for smi, mol, prob, label in zip(valid_smiles, mols, probs, labels):
+        results.append(
+            {
+                "smiles": smi,
+                "activity_probability": round(float(prob), 4),
+                "predicted_active": bool(label),
+                "mw": round(Descriptors.MolWt(mol), 2),
+                "logp": round(Descriptors.MolLogP(mol), 2),
+                "hbd": int(Descriptors.NumHDonors(mol)),
+                "hba": int(Descriptors.NumHAcceptors(mol)),
+                "tpsa": round(Descriptors.TPSA(mol), 1),
+            }
+        )
     results.sort(key=lambda r: r["activity_probability"], reverse=True)
     return results

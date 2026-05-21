@@ -17,6 +17,11 @@ class QSARPrediction(BaseModel):
     smiles: str
     activity_probability: float
     predicted_active: bool
+    mw: float | None = None
+    logp: float | None = None
+    hbd: int | None = None
+    hba: int | None = None
+    tpsa: float | None = None
 
 
 class QSARResponse(BaseModel):
