@@ -166,13 +166,11 @@ Total wall-clock time from target ID to ranked docking results, excluding the on
 
 ## Slide 13: APEX Web Platform
 
-The platform is designed so that a biologist with no command-line experience can run the full pipeline, and a computational chemist can use the REST API directly without touching the frontend.
+The platform exposes the full pipeline through a web interface accessible to anyone who can type a target name. There's no configuration, no scripting, no manual file preparation required.
 
-The backend is FastAPI — a Python ASGI framework that generates OpenAPI documentation automatically and validates all inputs via Pydantic schemas. The four endpoints cover the complete pipeline: target search, QSAR training and prediction, structure retrieval, and docking. The docking endpoint accepts optional box_center and box_size parameters — three-element float arrays in angstroms — so a researcher who knows the experimental binding site can bypass the automatic estimation entirely.
+The scientifically important feature on this slide is the virtual screening mode. In demo mode, the QSAR model trains on ChEMBL bioactivity data and predicts on the ChEMBL test split — which is useful for benchmarking but circular in a real drug discovery context, since you already have the IC50 values for those compounds. The meaningful workflow is virtual screening: you supply your own compound library — either as a CSV file where the SMILES column is auto-detected, or by pasting SMILES directly into the interface — and the model screens that library against the target. This is how you find new scaffolds that are not in ChEMBL.
 
-The QSAR endpoint supports two operating modes. In demo mode, the model predicts on the ChEMBL test split. In virtual screening mode, the user supplies their own compound library as SMILES strings via CSV upload — where the SMILES column is auto-detected by header keyword — or by pasting SMILES directly into the interface. This is the scientifically meaningful workflow: train on known ChEMBL actives, then predict on a novel library to identify new scaffolds.
-
-The frontend is a React single-page application served as a static file by the FastAPI backend on the same origin, eliminating all CORS complexity. There is no build step and no Node.js dependency. The interface provides a sidebar for target search and run history, a real-time log showing each pipeline stage as it executes, sortable QSAR and docking results tables, and a compound compare overlay for side-by-side inspection of shortlisted candidates.
+The results interface is designed for rapid triage. The QSAR table is sortable by predicted activity probability and shows Lipinski descriptor values per compound, so you can immediately see which predicted actives are drug-like and which are not. The docking results are ranked by binding free energy with heat colouring — green for strong binders, yellow for moderate, red for weak — so the top candidates are immediately identifiable without reading numbers. The compound compare overlay lets you put two candidates side by side for direct comparison before deciding which to prioritize for synthesis.
 
 **NEXT SLIDE**
 

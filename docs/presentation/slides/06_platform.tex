@@ -6,41 +6,33 @@
 \begin{frame}{APEX Web Platform}
   \begin{columns}[T]
     \begin{column}{0.52\textwidth}
-      \begin{block}{Backend — FastAPI}
-        \begin{itemize}
-          \item \texttt{GET /targets/search?q=} — ChEMBL lookup
-          \item \texttt{POST /qsar/\{target\_id\}} — train + predict
-          \item \texttt{GET /structures/\{uniprot\_id\}} — AlphaFold/PDB
-          \item \texttt{POST /docking/} — Vina run, ranked results
-        \end{itemize}
-        Optional \texttt{box\_center}/\texttt{box\_size} override
-        lets researchers supply known binding-site coordinates.
-      \end{block}
-      \vspace{0.2cm}
       \begin{block}{Virtual Screening Mode}
-        Users supply their own compound library:
+        Users supply their own compound library for screening:
         \begin{itemize}
-          \item CSV upload (SMILES column auto-detected)
+          \item CSV upload — SMILES column auto-detected
           \item Manual SMILES entry (single or batch)
-          \item Demo: screens ChEMBL test-split compounds
+          \item Demo mode: evaluates on ChEMBL test-split compounds
         \end{itemize}
+        \vspace{0.15cm}
+        Train on known ChEMBL actives, predict on a novel
+        library — the scientifically correct use case for
+        identifying new scaffolds.
       \end{block}
     \end{column}
     \begin{column}{0.45\textwidth}
-      \begin{block}{Frontend — React}
+      \begin{block}{Results Interface}
         \begin{itemize}
-          \item Sidebar: target search \& run history
-          \item Real-time pipeline status log
-          \item QSAR table sortable by activity probability
-          \item Docking hit ranking with affinity heat colours
-          \item Compound compare overlay
+          \item QSAR table ranked by activity probability
+          \item Lipinski descriptors per compound
+          \item Docking hits ranked by $\Delta G_{\text{bind}}$
+          \item Affinity heat colouring for rapid triage
+          \item Side-by-side compound comparison
         \end{itemize}
       \end{block}
       \vspace{0.2cm}
-      \begin{exampleblock}{No Build Step}
-        Single \texttt{index.html} with CDN React.\\
-        Served as a static file by the FastAPI backend
-        on the same origin — no CORS configuration needed.
+      \begin{exampleblock}{Any Target, On Demand}
+        Search by name or ChEMBL ID — the full pipeline
+        runs automatically with no manual configuration.
       \end{exampleblock}
     \end{column}
   \end{columns}
