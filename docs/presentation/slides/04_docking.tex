@@ -9,16 +9,21 @@
       \begin{block}{Ligand Preparation}
         \begin{enumerate}
           \item SMILES $\rightarrow$ 3D conformer (RDKit ETKDGv3)
-          \item Energy minimisation (MMFF94 force field)
-          \item Conversion to PDBQT (Open Babel)
+          \item Force-field minimisation (MMFF94)
+          \item PDBQT conversion (Open Babel \texttt{-{}-gen3d})
         \end{enumerate}
       \end{block}
       \vspace{0.3cm}
       \begin{block}{Receptor Preparation}
         \begin{enumerate}
           \item Structure fetch: AlphaFold $\rightarrow$ RCSB PDB
-          \item Conversion to PDBQT
-          \item Binding box: BioPython $C_\alpha$ centroid + 10\,\AA\ padding
+          \item PDBQT conversion (Open Babel \texttt{-xr})
+          \item Binding box (BioPython):
+                \begin{itemize}
+                  \item HETATM ligand centroid if co-crystal present
+                  \item Protein geometric centroid otherwise
+                  \item $+$ 10\,\AA\ padding, capped at 30\,\AA
+                \end{itemize}
         \end{enumerate}
       \end{block}
     \end{column}
@@ -26,17 +31,19 @@
       \begin{block}{Vina Scoring Function}
         Combines:
         \begin{itemize}
-          \item Steric (Gaussian) terms
-          \item Hydrogen-bond energy
+          \item Steric (Gaussian) repulsion/attraction
+          \item H-bond energy
           \item Hydrophobic contacts
           \item Torsional entropy penalty
         \end{itemize}
-        Output: $\Delta G_{\text{bind}}$ in kcal/mol
+        Output: $\Delta G_{\text{bind}}$ (kcal/mol)\\
+        \small More negative $=$ tighter predicted binding.
       \end{block}
       \vspace{0.3cm}
-      \begin{exampleblock}{Exhaustiveness}
-        Set to 8 (default). Increase for larger binding pockets
-        at the cost of runtime.
+      \begin{exampleblock}{Search Parameters}
+        Exhaustiveness\,=\,8 (default).\\
+        Up to 5 poses per ligand returned.\\
+        \small Box: 22.5\,\AA\ (co-crystal) or adaptive (centroid).
       \end{exampleblock}
     \end{column}
   \end{columns}
@@ -46,7 +53,8 @@
   \begin{center}
     \includegraphics[width=0.88\textwidth]{../figs/docking_scores.png}
   \end{center}
-  \textit{Left}: full affinity distribution across screened candidates.
-  \textit{Right}: top-20 ranked hits coloured by binding strength
-  (green $\leq -10$\,kcal/mol, yellow moderate, red $\geq -4$\,kcal/mol).
+  \textit{Left}: binding affinity distribution across top-20 candidates.
+  \textit{Right}: ranked hits coloured by binding strength
+  (green $\leq -9$\,kcal/mol, yellow moderate, red $\geq -6$\,kcal/mol).
+  CDK2 — best: $-9.5$\,kcal/mol, median: $-8.2$\,kcal/mol, 3/20 below $-9$.
 \end{frame}

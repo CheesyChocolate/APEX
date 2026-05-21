@@ -8,31 +8,37 @@
     \begin{column}{0.52\textwidth}
       \begin{block}{What APEX Delivers}
         \begin{itemize}
-          \item Fully automated, target-agnostic screening pipeline
-          \item ChEMBL bioactivity ingestion with local caching
-          \item QSAR model (RF, AUC $>$ 0.94 on CDK2)
-          \item AutoDock Vina docking for top-N candidates
-          \item REST API + interactive web frontend
+          \item Target-agnostic pipeline: ChEMBL $\rightarrow$ QSAR $\rightarrow$ docking
+          \item RF classifier on $\mathbb{R}^{1030}$ (Morgan + 6 descriptors)
+          \item Lipinski filter + max-min diversity pre-selection
+          \item AutoDock Vina with adaptive binding-box estimation
+          \item Virtual screening: user-supplied compound libraries
+          \item REST API + interactive web frontend, no build step
         \end{itemize}
+      \end{block}
+      \vspace{0.2cm}
+      \begin{block}{CDK2 Validation}
+        CV AUC\,=\,0.943 \quad Test F1\,=\,0.901\\
+        Top hit: $-9.5$\,kcal/mol \quad Pipeline: $<$10\,min
       \end{block}
     \end{column}
     \begin{column}{0.45\textwidth}
       \begin{exampleblock}{Planned Extensions}
         \begin{itemize}
-          \item Larger virtual compound libraries (Enamine REAL)
-          \item Ensemble QSAR models (XGBoost, GNN)
-          \item ADMET property filtering pre-docking
-          \item 3D binding pose visualisation in-browser
+          \item Enamine REAL library integration (7\,B compounds)
+          \item Ensemble QSAR: XGBoost, graph neural nets
+          \item ADMET filtering pre-docking
+          \item 3D binding pose viewer in-browser
+          \item Automated binding-site detection (fpocket / P2Rank)
           \item Multi-target comparative screening
         \end{itemize}
       \end{exampleblock}
     \end{column}
   \end{columns}
 
-  \vspace{0.5cm}
+  \vspace{0.4cm}
   \begin{center}
-    \large\textbf{APEX}: an open, extensible platform that turns a target name
-    into a ranked hit list — fully automatically.
+    \large\textbf{APEX}: a target name in — a ranked, diverse, drug-like hit list out.
   \end{center}
 \end{frame}
 

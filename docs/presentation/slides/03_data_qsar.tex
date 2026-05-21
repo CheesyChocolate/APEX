@@ -14,24 +14,28 @@
         \end{itemize}
       \end{block}
       \vspace{0.3cm}
-      \begin{block}{Data Filtering Pipeline}
+      \begin{block}{Data Cleaning Pipeline}
         \begin{enumerate}
-          \item Fetch IC50 measurements (human assays, nM units)
-          \item Validate SMILES with RDKit \texttt{MolFromSmiles}
-          \item Label: IC50 $\leq$ 1000 nM $\Rightarrow$ \textbf{active}
+          \item Fetch IC50 (human assays, nM units)
+          \item Validate SMILES via RDKit \texttt{MolFromSmiles}
+          \item Deduplicate by Morgan fingerprint (catches tautomers \& stereoisomers)
+          \item Drop grey zone: 1{,}000–10{,}000\,nM (ambiguous labels)
+          \item Label: IC50 $\leq$ 1{,}000\,nM $\Rightarrow$ \textbf{active}
           \item Stratified 80/20 train/test split
         \end{enumerate}
       \end{block}
     \end{column}
     \begin{column}{0.42\textwidth}
       \begin{exampleblock}{SQLite Cache}
-        All API responses are cached locally with a 7-day TTL.
-        Subsequent runs for the same target return in milliseconds.
+        All API responses cached locally (7-day TTL).
+        Re-runs for the same target return in milliseconds.
       \end{exampleblock}
       \vspace{0.3cm}
-      \begin{alertblock}{Rate Limiting}
-        ChEMBL enforces rate limits. Retry logic with exponential
-        backoff (3 attempts, 5\,s base) prevents silent data loss.
+      \begin{alertblock}{Label Noise Reduction}
+        Compounds with IC50 in the 1–10\,µM range are
+        removed before training: they are neither clearly
+        active nor clearly inactive and inflate decision-
+        boundary ambiguity in the binary classifier.
       \end{alertblock}
     \end{column}
   \end{columns}
@@ -42,32 +46,39 @@
     \begin{column}{0.52\textwidth}
       \begin{block}{Molecular Featurisation}
         \textbf{Morgan Fingerprints} (radius\,=\,2, 1024 bits)\\
-        Encode circular substructure neighbourhoods up to 2 bonds.
+        Circular substructure encoding, invariant to SMILES
+        notation.
 
         \vspace{0.25cm}
-        \textbf{RDKit Descriptors} (4 features concatenated):
+        \textbf{Physicochemical Descriptors} (6 features):
         \begin{itemize}
-          \item MolWt, LogP
-          \item \# H-bond donors (HBD)
-          \item \# H-bond acceptors (HBA)
+          \item Mol.\ weight, LogP
+          \item H-bond donors (HBD), H-bond acceptors (HBA)
+          \item Rotatable bonds, aromatic ring count
         \end{itemize}
 
-        \vspace{0.25cm}
-        Combined feature vector: $\mathbf{x} \in \mathbb{R}^{1028}$
+        \vspace{0.2cm}
+        Feature vector: $\mathbf{x} \in \mathbb{R}^{1030}$
       \end{block}
     \end{column}
     \begin{column}{0.45\textwidth}
       \begin{block}{Random Forest Classifier}
         \begin{itemize}
-          \item 500 estimators
+          \item 200 trees, \texttt{random\_state=42}
           \item 5-fold stratified cross-validation
-          \item Reports ROC-AUC and F1 on held-out test set
+          \item Metrics: CV ROC-AUC and held-out F1
         \end{itemize}
       \end{block}
-      \vspace{0.3cm}
-      \begin{exampleblock}{Output}
-        Per-compound predicted activity probability $p \in [0,1]$.
-        Top-20 compounds ($p$ ranked descending) forwarded to docking.
+      \vspace{0.25cm}
+      \begin{alertblock}{Why Classification?}
+        Cross-assay IC50 noise degrades regression more than
+        classification. \texttt{predict\_proba} already
+        provides a continuous ranking signal.
+      \end{alertblock}
+      \vspace{0.25cm}
+      \begin{exampleblock}{Persistence}
+        Model serialised to \texttt{\{target\_id\}.pkl};
+        reused on subsequent prediction calls.
       \end{exampleblock}
     \end{column}
   \end{columns}
@@ -77,7 +88,44 @@
   \begin{center}
     \includegraphics[width=0.88\textwidth]{../figs/qsar_metrics.png}
   \end{center}
-  \textit{Left}: predicted activity probability distributions by class.
-  \textit{Right}: top-20 ranked compounds with active/inactive labels.
-  CDK2 (CHEMBL301) — CV AUC\,=\,0.943, Test F1\,=\,0.901.
+  \textit{Left}: predicted activity probability distributions by true label.
+  \textit{Right}: top-20 ranked compounds coloured by ground-truth activity.
+  CDK2 (CHEMBL301) — CV AUC\,=\,0.943, Test F1\,=\,0.901, $n_\text{train}$\,=\,798.
+\end{frame}
+
+\begin{frame}{Candidate Pre-selection: Drug-likeness \& Diversity}
+  \begin{columns}[T]
+    \begin{column}{0.50\textwidth}
+      \begin{block}{Step 1 — Lipinski Rule of Five}
+        Drug-likeness gate applied to predicted actives:
+        \begin{itemize}
+          \item MW $\leq$ 500\,Da
+          \item LogP $\leq$ 5
+          \item HBD $\leq$ 5
+          \item HBA $\leq$ 10
+          \item TPSA $\leq$ 140\,\AA$^2$
+        \end{itemize}
+        \small Falls back to all actives if none pass.
+      \end{block}
+    \end{column}
+    \begin{column}{0.47\textwidth}
+      \begin{block}{Step 2 — Max-Min Diversity Selection}
+        Greedy farthest-point algorithm on Tanimoto distance
+        over Morgan fingerprints:
+        \begin{enumerate}
+          \item Seed: highest-$p$ drug-like compound
+          \item Each step: add compound maximally distant
+                from all already selected
+          \item Stop at $N = 20$
+        \end{enumerate}
+        \vspace{0.1cm}
+        \small $d_T(A,B) = 1 - \dfrac{|A \cap B|}{|A \cup B|}$
+      \end{block}
+      \vspace{0.2cm}
+      \begin{exampleblock}{Why Diversity?}
+        Similar scaffolds share binding modes — diversity
+        maximises binding-pocket exploration at docking.
+      \end{exampleblock}
+    \end{column}
+  \end{columns}
 \end{frame}

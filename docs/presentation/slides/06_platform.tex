@@ -8,29 +8,39 @@
     \begin{column}{0.52\textwidth}
       \begin{block}{Backend — FastAPI}
         \begin{itemize}
-          \item \texttt{GET /targets/search?q=} — ChEMBL target lookup
+          \item \texttt{GET /targets/search?q=} — ChEMBL lookup
           \item \texttt{POST /qsar/\{target\_id\}} — train + predict
-          \item \texttt{GET /structures/\{uniprot\_id\}} — AlphaFold/PDB fetch
+          \item \texttt{GET /structures/\{uniprot\_id\}} — AlphaFold/PDB
           \item \texttt{POST /docking/} — Vina run, ranked results
         \end{itemize}
-        All routes are independently callable; each service is
-        independently cacheable and testable.
+        Optional \texttt{box\_center}/\texttt{box\_size} override
+        lets researchers supply known binding-site coordinates.
+      \end{block}
+      \vspace{0.2cm}
+      \begin{block}{Virtual Screening Mode}
+        Users supply their own compound library:
+        \begin{itemize}
+          \item CSV upload (SMILES column auto-detected)
+          \item Manual SMILES entry (single or batch)
+          \item Demo: screens ChEMBL test-split compounds
+        \end{itemize}
       \end{block}
     \end{column}
     \begin{column}{0.45\textwidth}
       \begin{block}{Frontend — React}
         \begin{itemize}
-          \item Sidebar target search
+          \item Sidebar: target search \& run history
           \item Real-time pipeline status log
-          \item QSAR results table with activity probabilities
+          \item QSAR table sortable by activity probability
           \item Docking hit ranking with affinity heat colours
           \item Compound compare overlay
         \end{itemize}
       \end{block}
       \vspace{0.2cm}
       \begin{exampleblock}{No Build Step}
-        Single \texttt{index.html} with CDN React — open directly
-        in a browser or serve with any static file server.
+        Single \texttt{index.html} with CDN React.\\
+        Served as a static file by the FastAPI backend
+        on the same origin — no CORS configuration needed.
       \end{exampleblock}
     \end{column}
   \end{columns}
