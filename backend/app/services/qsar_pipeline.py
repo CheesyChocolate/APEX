@@ -5,8 +5,7 @@ import numpy as np
 from app.core.config import MODELS_DIR
 from app.core.exceptions import QSARError
 from app.core.logging import get_logger
-from rdkit.Chem import Descriptors, MolFromSmiles
-from rdkit.Chem.AllChem import GetMorganFingerprintAsBitVect
+from rdkit.Chem import Descriptors, MolFromSmiles, rdFingerprintGenerator
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import f1_score, roc_auc_score
 from sklearn.model_selection import cross_val_score
@@ -16,6 +15,9 @@ logger = get_logger(__name__)
 MODELS_DIR = Path(MODELS_DIR)
 FP_RADIUS = 2
 FP_BITS = 1024
+_morgan_gen = rdFingerprintGenerator.GetMorganGenerator(
+    radius=FP_RADIUS, fpSize=FP_BITS
+)
 
 
 def _mol(smiles: str):
@@ -29,7 +31,7 @@ def featurize(smiles_list: list[str]) -> np.ndarray:
     rows = []
     for smi in smiles_list:
         mol = _mol(smi)
-        fp = list(GetMorganFingerprintAsBitVect(mol, FP_RADIUS, nBits=FP_BITS))
+        fp = list(_morgan_gen.GetFingerprintAsNumPy(mol))
         desc = [
             Descriptors.MolWt(mol),
             Descriptors.MolLogP(mol),

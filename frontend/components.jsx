@@ -742,8 +742,8 @@ function QsarTable({ rows, expanded, onToggleExpand, selected, onToggleSelected,
                       {r.predicted_active ? 'Active' : 'Inactive'}
                     </span>
                   </td>
-                  <td className="num" style={{ textAlign: 'right', color: 'var(--ink-3)' }}>{r.mw}</td>
-                  <td className="num" style={{ textAlign: 'right', color: 'var(--ink-3)' }}>{r.logp.toFixed(2)}</td>
+                  <td className="num" style={{ textAlign: 'right', color: 'var(--ink-3)' }}>{r.mw ?? '—'}</td>
+                  <td className="num" style={{ textAlign: 'right', color: 'var(--ink-3)' }}>{r.logp != null ? r.logp.toFixed(2) : '—'}</td>
                   <td>
                     <button
                       className="btn ghost icon sm"
@@ -884,9 +884,9 @@ function DockingTable({ rows, selected, onToggleSelected, onOpenDetail, showStru
                       </span>
                     </div>
                   </td>
-                  <td className="num" style={{ textAlign: 'right', color: 'var(--ink-3)' }}>{r.conformers}</td>
-                  <td className="num" style={{ textAlign: 'right', color: 'var(--ink-3)' }}>{r.rmsd.toFixed(2)}</td>
-                  <td className="num" style={{ textAlign: 'right', color: 'var(--ink-3)' }}>{r.h_bonds}</td>
+                  <td className="num" style={{ textAlign: 'right', color: 'var(--ink-3)' }}>{r.conformers ?? '—'}</td>
+                  <td className="num" style={{ textAlign: 'right', color: 'var(--ink-3)' }}>{r.rmsd != null ? r.rmsd.toFixed(2) : '—'}</td>
+                  <td className="num" style={{ textAlign: 'right', color: 'var(--ink-3)' }}>{r.h_bonds ?? '—'}</td>
                   <td>
                     <button
                       className="btn ghost icon sm"
@@ -1082,11 +1082,11 @@ function DetailDrawer({ compound, kind, onClose, target }) {
           }}>
             {isDocking ? (
               <>
-                <DetailMetric label="Binding affinity" big={compound.affinity_kcal_mol.toFixed(1)} unit="kcal/mol" tone="good" />
-                <DetailMetric label="Pose score" big={compound.pose_score.toFixed(2)} />
-                <DetailMetric label="RMSD"      v={`${compound.rmsd.toFixed(2)} Å`} />
-                <DetailMetric label="Conformers" v={compound.conformers} />
-                <DetailMetric label="H-bonds"   v={compound.h_bonds} />
+                <DetailMetric label="Binding affinity" big={compound.affinity_kcal_mol?.toFixed(1) ?? '—'} unit="kcal/mol" tone="good" />
+                {compound.pose_score != null && <DetailMetric label="Pose score" big={compound.pose_score.toFixed(2)} />}
+                {compound.rmsd != null && <DetailMetric label="RMSD" v={`${compound.rmsd.toFixed(2)} Å`} />}
+                {compound.conformers != null && <DetailMetric label="Conformers" v={compound.conformers} />}
+                {compound.h_bonds != null && <DetailMetric label="H-bonds" v={compound.h_bonds} />}
                 <DetailMetric label="Rank"      v={`${compound.rank} of 20`} />
               </>
             ) : (
@@ -1094,10 +1094,10 @@ function DetailDrawer({ compound, kind, onClose, target }) {
                 <DetailMetric label="Activity probability" big={compound.activity_probability.toFixed(3)}
                               tone={compound.predicted_active ? 'good' : 'muted'} />
                 <DetailMetric label="Prediction" v={compound.predicted_active ? 'Active' : 'Inactive'} />
-                <DetailMetric label="Mol. weight" v={`${compound.mw} g/mol`} />
-                <DetailMetric label="cLogP"       v={compound.logp.toFixed(2)} />
-                <DetailMetric label="HBD / HBA"   v={`${compound.hbd} / ${compound.hba}`} />
-                <DetailMetric label="TPSA"        v={`${compound.tpsa} Å²`} />
+                {compound.mw != null && <DetailMetric label="Mol. weight" v={`${compound.mw} g/mol`} />}
+                {compound.logp != null && <DetailMetric label="cLogP" v={compound.logp.toFixed(2)} />}
+                {compound.hbd != null && <DetailMetric label="HBD / HBA" v={`${compound.hbd} / ${compound.hba}`} />}
+                {compound.tpsa != null && <DetailMetric label="TPSA" v={`${compound.tpsa} Å²`} />}
               </>
             )}
           </div>
