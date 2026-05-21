@@ -112,3 +112,78 @@ def predict(smiles_list: list[str], model_path: Path) -> list[dict]:
         )
     results.sort(key=lambda r: r["activity_probability"], reverse=True)
     return results
+
+
+# ── Lipinski Rule of Five ──────────────────────────────────────────────────
+
+
+def _passes_lipinski(p: dict) -> bool:
+    return (
+        (p.get("mw") or 0) <= 500
+        and (p.get("logp") or 999) <= 5
+        and (p.get("hbd") or 0) <= 5
+        and (p.get("hba") or 0) <= 10
+        and (p.get("tpsa") or 0) <= 140
+    )
+
+
+def _tanimoto(a: np.ndarray, b: np.ndarray) -> float:
+    inter = float(np.dot(a, b))
+    union = float(a.sum() + b.sum() - inter)
+    return inter / union if union > 0 else 1.0
+
+
+def select_diverse_top_n(predictions: list[dict], n: int) -> list[dict]:
+    """
+    From predicted-active compounds:
+    1. Filter by Lipinski Rule of Five (drug-likeness gate)
+    2. Select the most structurally diverse n using max-min Tanimoto greedy selection
+    """
+    actives = [p for p in predictions if p["predicted_active"]]
+    if not actives:
+        return []
+
+    drug_like = [p for p in actives if _passes_lipinski(p)]
+    # Fall back to all actives only if nothing passes Lipinski
+    pool = drug_like if drug_like else actives
+    logger.info(
+        "Top-N selection: %d actives → %d pass Lipinski → selecting up to %d diverse",
+        len(actives),
+        len(drug_like),
+        n,
+    )
+
+    if len(pool) <= n:
+        return pool
+
+    # Build fingerprint array for each pooled compound
+    fps, valid = [], []
+    for p in pool:
+        mol = MolFromSmiles(p["smiles"])
+        if mol is not None:
+            fps.append(_morgan_gen.GetFingerprintAsNumPy(mol).astype(float))
+            valid.append(p)
+
+    if len(valid) <= n:
+        return valid
+
+    # Greedy max-min: start from the highest-probability compound (index 0,
+    # pool is already sorted by predict()), then iteratively pick the compound
+    # that is most dissimilar to all already-selected ones.
+    selected = [0]
+    selected_set = {0}
+    while len(selected) < n:
+        best_i, best_dist = -1, -1.0
+        for i in range(len(valid)):
+            if i in selected_set:
+                continue
+            min_sim = min(_tanimoto(fps[i], fps[j]) for j in selected)
+            dist = 1.0 - min_sim
+            if dist > best_dist:
+                best_dist, best_i = dist, i
+        if best_i < 0:
+            break
+        selected.append(best_i)
+        selected_set.add(best_i)
+
+    return [valid[i] for i in selected]

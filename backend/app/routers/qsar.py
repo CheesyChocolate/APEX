@@ -45,7 +45,7 @@ def run_qsar(
     except QSARError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
-    top_n = [p for p in predictions if p["predicted_active"]][:TOP_N_FOR_DOCKING]
+    top_n = qsar_pipeline.select_diverse_top_n(predictions, TOP_N_FOR_DOCKING)
     return QSARResponse(
         chembl_target_id=chembl_target_id,
         model_path=str(model_path),
