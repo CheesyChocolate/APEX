@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 
 import requests
-from app.core.config import VINA_EXHAUSTIVENESS
+from app.core.config import STRUCTURES_DIR, VINA_EXHAUSTIVENESS
 from app.core.exceptions import DockingError
 from app.core.logging import get_logger
 from rdkit.Chem import AddHs, MolFromSmiles, MolToMolBlock
@@ -76,11 +76,14 @@ def _hetatm_centroid(structure):
     return np.array(coords).mean(axis=0)
 
 
-def _box_from_rcsb_cocrystal(uniprot_id: str) -> dict | None:
+def _box_from_rcsb_cocrystal(uniprot_id: str) -> tuple[dict, Path] | None:
     """
-    Query RCSB for any co-crystal PDB entry of this target that contains a bound
-    small-molecule ligand, then return the ligand centroid as the docking box centre.
-    Returns None on any failure so the caller falls back gracefully.
+    Query RCSB for a co-crystal PDB entry with a bound small-molecule ligand.
+
+    Returns (box, saved_pdb_path) so the caller can dock into the *same* structure
+    the box coordinates came from — critical to avoid coordinate-frame mismatch when
+    the primary receptor is an AlphaFold model with different atom coordinates.
+    Returns None on any failure.
     """
     from Bio.PDB import PDBParser
 
@@ -131,6 +134,9 @@ def _box_from_rcsb_cocrystal(uniprot_id: str) -> dict | None:
         return None
 
     parser = PDBParser(QUIET=True)
+    structures_dir = Path(STRUCTURES_DIR)
+    structures_dir.mkdir(parents=True, exist_ok=True)
+
     for hit in hits:
         pdb_id = hit["identifier"]
         try:
@@ -141,10 +147,16 @@ def _box_from_rcsb_cocrystal(uniprot_id: str) -> dict | None:
             center = _hetatm_centroid(structure)
             if center is None:
                 continue
+
+            # Save so we can dock into this exact structure (same coordinate frame)
+            pdb_path = structures_dir / f"{uniprot_id}_cocrystal_{pdb_id}.pdb"
+            pdb_path.write_text(pdb_resp.text)
             logger.info(
-                "Binding site sourced from PDB %s (UniProt %s)", pdb_id, uniprot_id
+                "Co-crystal receptor %s saved → %s; will dock into this structure",
+                pdb_id,
+                pdb_path.name,
             )
-            return {
+            box = {
                 "center_x": float(center[0]),
                 "center_y": float(center[1]),
                 "center_z": float(center[2]),
@@ -152,6 +164,7 @@ def _box_from_rcsb_cocrystal(uniprot_id: str) -> dict | None:
                 "size_y": _BOX_SIZE_LIGAND,
                 "size_z": _BOX_SIZE_LIGAND,
             }
+            return box, pdb_path
         except Exception as exc:
             logger.debug("Skipping PDB %s: %s", pdb_id, exc)
 
@@ -159,13 +172,18 @@ def _box_from_rcsb_cocrystal(uniprot_id: str) -> dict | None:
     return None
 
 
-def _get_box(receptor_pdb: Path, uniprot_id: str | None = None) -> dict:
+def _get_box(receptor_pdb: Path, uniprot_id: str | None = None) -> tuple[dict, Path]:
     """
-    Resolve docking search box with a three-tier priority:
-      1. HETATM ligand in the supplied receptor PDB (co-crystal structure).
-      2. RCSB lookup: find a related PDB entry with a bound ligand (used when the
-         receptor is an AlphaFold model with no co-crystal ligand).
-      3. Protein geometric centroid — last resort, logs a WARNING.
+    Resolve docking search box and the receptor file to dock into.
+
+    Returns (box, receptor_path) — the receptor_path may differ from receptor_pdb
+    when an RCSB co-crystal is used, because box coordinates and receptor MUST be
+    from the same structure (different PDB files have independent coordinate frames).
+
+    Three-tier priority:
+      1. HETATM ligand in the supplied receptor PDB → box + same file as receptor.
+      2. RCSB co-crystal lookup → box + that PDB saved locally as receptor.
+      3. Protein centroid fallback → box + original receptor (logs WARNING).
     """
     import numpy as np
     from Bio.PDB import PDBParser
@@ -173,7 +191,7 @@ def _get_box(receptor_pdb: Path, uniprot_id: str | None = None) -> dict:
     parser = PDBParser(QUIET=True)
     structure = parser.get_structure("rec", str(receptor_pdb))
 
-    # Tier 1 — ligand already present in the receptor file
+    # Tier 1 — ligand already in the receptor file; coordinates are consistent
     center = _hetatm_centroid(structure)
     if center is not None:
         all_coords = np.array([atom.coord for atom in structure.get_atoms()])
@@ -186,15 +204,16 @@ def _get_box(receptor_pdb: Path, uniprot_id: str | None = None) -> dict:
             "size_x": float(size[0]),
             "size_y": float(size[1]),
             "size_z": float(size[2]),
-        }
+        }, receptor_pdb
 
-    # Tier 2 — look up a co-crystal PDB on RCSB for this UniProt target
+    # Tier 2 — fetch a co-crystal PDB from RCSB; dock into THAT file
     if uniprot_id:
-        box = _box_from_rcsb_cocrystal(uniprot_id)
-        if box:
-            return box
+        result = _box_from_rcsb_cocrystal(uniprot_id)
+        if result is not None:
+            box, cocrystal_path = result
+            return box, cocrystal_path
 
-    # Tier 3 — fall back to protein centroid (AlphaFold with no known ligand)
+    # Tier 3 — no known binding site; use protein centroid of the original receptor
     all_coords = [atom.coord for atom in structure.get_atoms()]
     if not all_coords:
         raise DockingError("No atoms found in receptor PDB")
@@ -213,7 +232,7 @@ def _get_box(receptor_pdb: Path, uniprot_id: str | None = None) -> dict:
         "size_x": float(size[0]),
         "size_y": float(size[1]),
         "size_z": float(size[2]),
-    }
+    }, receptor_pdb
 
 
 _N_POSES = 5
@@ -250,9 +269,10 @@ def run(
     results = []
     if box_override:
         box = box_override
+        receptor_to_use = receptor_pdb
         logger.info("Using user-supplied docking box")
     else:
-        box = _get_box(receptor_pdb, uniprot_id)
+        box, receptor_to_use = _get_box(receptor_pdb, uniprot_id)
     logger.info(
         "Docking box: center=(%.1f, %.1f, %.1f) size=(%.1f, %.1f, %.1f)",
         box["center_x"],
@@ -262,11 +282,13 @@ def run(
         box["size_y"],
         box["size_z"],
     )
+    if receptor_to_use != receptor_pdb:
+        logger.info("Receptor switched to co-crystal: %s", receptor_to_use.name)
 
     with tempfile.TemporaryDirectory() as tmp:
         work_dir = Path(tmp)
         try:
-            receptor_pdbqt = _receptor_to_pdbqt(receptor_pdb, work_dir)
+            receptor_pdbqt = _receptor_to_pdbqt(receptor_to_use, work_dir)
         except DockingError as e:
             raise DockingError(f"Receptor preparation failed: {e}") from e
 
