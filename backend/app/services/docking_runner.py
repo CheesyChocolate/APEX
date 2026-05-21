@@ -75,7 +75,10 @@ def _get_box(receptor_pdb: Path) -> dict:
     }
 
 
-def _dock_one(receptor_pdbqt: Path, ligand_pdbqt: Path, box: dict) -> float:
+_N_POSES = 5
+
+
+def _dock_one(receptor_pdbqt: Path, ligand_pdbqt: Path, box: dict) -> dict:
     from vina import Vina
 
     v = Vina(sf_name="vina", verbosity=0)
@@ -85,9 +88,13 @@ def _dock_one(receptor_pdbqt: Path, ligand_pdbqt: Path, box: dict) -> float:
         center=[box["center_x"], box["center_y"], box["center_z"]],
         box_size=[box["size_x"], box["size_y"], box["size_z"]],
     )
-    v.dock(exhaustiveness=VINA_EXHAUSTIVENESS, n_poses=1)
-    energies = v.energies(n_poses=1)
-    return float(energies[0][0])
+    v.dock(exhaustiveness=VINA_EXHAUSTIVENESS, n_poses=_N_POSES)
+    energies = v.energies(n_poses=_N_POSES)
+    n = len(energies)
+    best_score = float(energies[0][0])
+    # RMSD of second-best pose from best (pose diversity); None if only one pose
+    rmsd = float(energies[1][1]) if n > 1 else None
+    return {"affinity_kcal_mol": best_score, "conformers": n, "rmsd": rmsd}
 
 
 def run(receptor_pdb: Path, smiles_list: list[str]) -> list[dict]:
@@ -118,10 +125,14 @@ def run(receptor_pdb: Path, smiles_list: list[str]) -> list[dict]:
             lig_dir.mkdir()
             try:
                 ligand_pdbqt = _smiles_to_pdbqt(smiles, lig_dir)
-                score = _dock_one(receptor_pdbqt, ligand_pdbqt, box)
-                results.append({"smiles": smiles, "affinity_kcal_mol": score})
+                pose = _dock_one(receptor_pdbqt, ligand_pdbqt, box)
+                results.append({"smiles": smiles, **pose})
                 logger.debug(
-                    "Docked %d/%d: %.2f kcal/mol", i + 1, len(smiles_list), score
+                    "Docked %d/%d: %.2f kcal/mol (%d poses)",
+                    i + 1,
+                    len(smiles_list),
+                    pose["affinity_kcal_mol"],
+                    pose["conformers"],
                 )
             except Exception as e:
                 logger.warning("Docking failed for compound %d: %s", i, e)

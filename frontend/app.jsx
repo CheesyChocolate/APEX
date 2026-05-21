@@ -33,7 +33,11 @@ function normQsar(predictions, targetId) {
     smiles: p.smiles,
     activity_probability: p.activity_probability,
     predicted_active: p.predicted_active,
-    mw: null, logp: null, hbd: null, hba: null, tpsa: null,
+    mw:   p.mw   ?? null,
+    logp: p.logp ?? null,
+    hbd:  p.hbd  ?? null,
+    hba:  p.hba  ?? null,
+    tpsa: p.tpsa ?? null,
   }));
 }
 

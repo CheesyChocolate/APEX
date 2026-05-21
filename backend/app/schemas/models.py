@@ -47,4 +47,6 @@ class DockingResult(BaseModel):
     smiles: str
     affinity_kcal_mol: float | None
     rank: int
+    conformers: int | None = None
+    rmsd: float | None = None
     error: str | None = None
