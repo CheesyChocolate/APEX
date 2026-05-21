@@ -67,6 +67,7 @@
           \item 200 trees, \texttt{random\_state=42}
           \item 5-fold stratified cross-validation
           \item Metrics: CV ROC-AUC and held-out F1
+          \item Serialised to \texttt{\{target\_id\}.pkl} after training
         \end{itemize}
       \end{block}
       \vspace{0.25cm}
@@ -75,11 +76,6 @@
         classification. \texttt{predict\_proba} already
         provides a continuous ranking signal.
       \end{alertblock}
-      \vspace{0.25cm}
-      \begin{exampleblock}{Persistence}
-        Model serialised to \texttt{\{target\_id\}.pkl};
-        reused on subsequent prediction calls.
-      \end{exampleblock}
     \end{column}
   \end{columns}
 \end{frame}
