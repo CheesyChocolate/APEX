@@ -51,24 +51,61 @@ def _receptor_to_pdbqt(receptor_pdb: Path, work_dir: Path) -> Path:
     return pdbqt_path
 
 
+_HETATM_EXCLUDE = {"HOH", "WAT", "SO4", "PO4", "GOL", "EDO", "PEG", "MPD"}
+
+
 def _get_box(receptor_pdb: Path) -> dict:
-    """Estimate docking box from receptor Cα centroid."""
+    """
+    Estimate docking box center and size.
+
+    For co-crystal PDB files: uses HETATM ligand centroid as binding-site centre
+    (standard practice for structure-based docking). For AlphaFold structures (no
+    bound ligand): falls back to protein geometric centroid — a known limitation,
+    since AlphaFold models have no experimental ligand to anchor the box.
+    """
     import numpy as np
     from Bio.PDB import PDBParser
 
     parser = PDBParser(QUIET=True)
     structure = parser.get_structure("rec", str(receptor_pdb))
-    coords = [atom.coord for atom in structure.get_atoms()]
-    if not coords:
-        raise DockingError("No atoms found in receptor PDB")
-    arr = np.array(coords)
-    center = arr.mean(axis=0)
-    size = (arr.max(axis=0) - arr.min(axis=0)) + 10  # 10 Å padding
+
+    # Collect HETATM coordinates, excluding solvent and common crystallography
+    # artifacts so that an actual small-molecule ligand drives the box centre.
+    het_coords = [
+        atom.coord
+        for residue in structure.get_residues()
+        if residue.id[0] not in (" ", "W")  # HETATM flag != standard AA or water
+        and residue.resname not in _HETATM_EXCLUDE
+        for atom in residue.get_atoms()
+    ]
+
+    if het_coords:
+        center_arr = np.array(het_coords).mean(axis=0)
+        logger.info(
+            "Binding box centred on co-crystal ligand (%d HETATM atoms)",
+            len(het_coords),
+        )
+    else:
+        # AlphaFold or ligand-free PDB: fall back to protein centroid
+        all_coords = [atom.coord for atom in structure.get_atoms()]
+        if not all_coords:
+            raise DockingError("No atoms found in receptor PDB")
+        center_arr = np.array(all_coords).mean(axis=0)
+        logger.warning(
+            "No co-crystal ligand found — using protein centroid as docking box "
+            "centre (approximation; binding site may not be at centroid)"
+        )
+
+    # Box size: span of protein backbone + 10 Å padding, capped at 30 Å per axis
+    backbone = [atom.coord for atom in structure.get_atoms()]
+    arr = np.array(backbone)
+    size = (arr.max(axis=0) - arr.min(axis=0)) * 0.5 + 10
     size = size.clip(max=30)
+
     return {
-        "center_x": float(center[0]),
-        "center_y": float(center[1]),
-        "center_z": float(center[2]),
+        "center_x": float(center_arr[0]),
+        "center_y": float(center_arr[1]),
+        "center_z": float(center_arr[2]),
         "size_x": float(size[0]),
         "size_y": float(size[1]),
         "size_z": float(size[2]),
