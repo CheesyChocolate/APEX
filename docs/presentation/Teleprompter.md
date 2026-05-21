@@ -192,4 +192,12 @@ The three most impactful planned extensions are: **Enamine REAL** library integr
 
 Thank you. I'm happy to go into more detail on any layer of the stack — the **fingerprint deduplication** logic, the **max-min diversity** algorithm, the **classification vs. regression** trade-off, the **Vina scoring function**, the **PDBQT preparation** pipeline, or the **virtual screening** workflow.
 
+**NEXT SLIDE**
+
+---
+
+## Slide 16: GitHub Star
+
+The source code is fully open. Scan the QR code or go to **github.com/CheesyChocolate/APEX**. If you found the project useful or interesting, a GitHub star takes two seconds and genuinely helps — it makes the repository more discoverable for other researchers in the same space.
+
 **END OF PRESENTATION**
