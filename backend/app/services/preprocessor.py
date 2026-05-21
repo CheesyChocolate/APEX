@@ -3,8 +3,10 @@ import pandas as pd
 from app.core.config import ACTIVE_THRESHOLD_NM
 from app.core.exceptions import QSARError
 from app.core.logging import get_logger
-from rdkit.Chem import MolFromSmiles
+from rdkit.Chem import MolFromSmiles, rdFingerprintGenerator
 from sklearn.model_selection import train_test_split
+
+_morgan_gen = rdFingerprintGenerator.GetMorganGenerator(radius=2, fpSize=1024)
 
 logger = get_logger(__name__)
 
@@ -33,14 +35,37 @@ def preprocess(records: list[dict]) -> tuple:
     logger.info("Dropped %d rows with null SMILES or IC50", initial - len(df))
 
     # Validate SMILES via RDKit
-    valid_mask = df["canonical_smiles"].apply(lambda s: MolFromSmiles(s) is not None)
-    dropped = (~valid_mask).sum()
+    df["_mol"] = df["canonical_smiles"].apply(MolFromSmiles)
+    dropped = df["_mol"].isna().sum()
     if dropped:
         logger.info("Dropped %d rows with invalid SMILES", dropped)
-    df = df[valid_mask].copy()
+    df = df[df["_mol"].notna()].copy()
+
+    # Deduplicate by Morgan fingerprint (catches same compound with different SMILES)
+    before_dedup = len(df)
+    df["_fp"] = df["_mol"].apply(
+        lambda mol: _morgan_gen.GetFingerprint(mol).ToBitString()
+    )
+    df = df.drop_duplicates(subset="_fp").reset_index(drop=True)
+    logger.info("Deduplication: %d → %d unique compounds", before_dedup, len(df))
+    df = df.drop(columns=["_mol", "_fp"])
 
     if len(df) < 10:
         raise QSARError(f"Too few valid records after cleaning: {len(df)}")
+
+    # Drop borderline intermediates (1000–10000 nM) to reduce label noise;
+    # keep only clear actives and clear inactives.
+    INACTIVE_THRESHOLD_NM = 10_000
+    intermediates = (
+        (df["standard_value"] > ACTIVE_THRESHOLD_NM)
+        & (df["standard_value"] <= INACTIVE_THRESHOLD_NM)
+    ).sum()
+    if intermediates > 0:
+        df = df[
+            (df["standard_value"] <= ACTIVE_THRESHOLD_NM)
+            | (df["standard_value"] > INACTIVE_THRESHOLD_NM)
+        ].copy()
+        logger.info("Dropped %d intermediate compounds (1–10 µM IC50)", intermediates)
 
     # IC50 → binary label
     df["label"] = (df["standard_value"] <= ACTIVE_THRESHOLD_NM).astype(int)

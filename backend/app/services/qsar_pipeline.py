@@ -5,7 +5,12 @@ import numpy as np
 from app.core.config import MODELS_DIR
 from app.core.exceptions import QSARError
 from app.core.logging import get_logger
-from rdkit.Chem import Descriptors, MolFromSmiles, rdFingerprintGenerator
+from rdkit.Chem import (
+    Descriptors,
+    MolFromSmiles,
+    rdFingerprintGenerator,
+    rdMolDescriptors,
+)
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import f1_score, roc_auc_score
 from sklearn.model_selection import cross_val_score
@@ -37,6 +42,8 @@ def featurize(smiles_list: list[str]) -> np.ndarray:
             Descriptors.MolLogP(mol),
             Descriptors.NumHDonors(mol),
             Descriptors.NumHAcceptors(mol),
+            Descriptors.NumRotatableBonds(mol),
+            rdMolDescriptors.CalcNumAromaticRings(mol),
         ]
         rows.append(fp + desc)
     return np.array(rows, dtype=float)
