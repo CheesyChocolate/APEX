@@ -13,6 +13,10 @@ class QSARRequest(BaseModel):
     max_records: int = 5000
 
 
+class QSARBody(BaseModel):
+    screening_smiles: list[str] | None = None
+
+
 class QSARPrediction(BaseModel):
     smiles: str
     activity_probability: float
@@ -29,6 +33,7 @@ class QSARResponse(BaseModel):
     model_path: str
     predictions: list[QSARPrediction]
     top_n: list[QSARPrediction]
+    screening_mode: str = "demo"
 
 
 class StructureResponse(BaseModel):

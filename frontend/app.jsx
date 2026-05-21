@@ -8,10 +8,15 @@ const { useState: aUseState, useEffect: aUseEffect, useRef: aUseRef, useMemo: aU
 // null → demo mode (mock data).  '' → same-origin.  'http://...' → explicit host.
 const API = (window.APEX_API_URL !== null && window.APEX_API_URL !== undefined) ? window.APEX_API_URL : null;
 
-async function apiRunQsar(targetId) {
-  const res = await fetch(`${API}/qsar/${encodeURIComponent(targetId)}`, { method: 'POST' });
+async function apiRunQsar(targetId, screeningSmiles) {
+  const body = screeningSmiles ? JSON.stringify({ screening_smiles: screeningSmiles }) : undefined;
+  const res = await fetch(`${API}/qsar/${encodeURIComponent(targetId)}`, {
+    method: 'POST',
+    headers: body ? { 'Content-Type': 'application/json' } : {},
+    body,
+  });
   if (!res.ok) throw new Error(`QSAR failed: ${res.status} ${res.statusText}`);
-  return res.json(); // { chembl_target_id, predictions: [{smiles, activity_probability, predicted_active}], top_n }
+  return res.json();
 }
 
 async function apiRunDocking(uniprotId, smilesList, pdbId) {
@@ -57,6 +62,10 @@ function App() {
   const [selectedTarget, setSelectedTarget] = aUseState(null);
   const [runMode, setRunMode]               = aUseState('auto');
   const [speedProfile, setSpeedProfile]     = aUseState('fast');
+
+  // 'demo' = use ChEMBL test split; 'csv' / 'smiles' = user-provided library
+  const [screeningMode, setScreeningMode]   = aUseState('demo');
+  const [screeningSmiles, setScreeningSmiles] = aUseState(null); // string[] | null
 
   const [pipelineStatus, setPipelineStatus] = aUseState('idle');
   // idle | running-qsar | qsar-done | running-docking | done | failed-...
@@ -178,10 +187,15 @@ function App() {
 
     if (API !== null) {
       const target = selectedTarget;
+      const smilesToScreen = (screeningMode !== 'demo' && screeningSmiles?.length) ? screeningSmiles : null;
       const t0 = Date.now();
       appendLog('info', `→ POST /qsar/${target.target_chembl_id}`);
-      appendLog('info', `Querying ChEMBL for ${target.short} bioactivity data… (this takes ~2 min on first run)`);
-      apiRunQsar(target.target_chembl_id)
+      if (smilesToScreen) {
+        appendLog('info', `Virtual screening: ${smilesToScreen.length} user compounds against ${target.short}`);
+      } else {
+        appendLog('info', `Querying ChEMBL for ${target.short} bioactivity data… (this takes ~2 min on first run)`);
+      }
+      apiRunQsar(target.target_chembl_id, smilesToScreen)
         .then(data => {
           const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
           const sorted = [...data.predictions].sort(
@@ -189,7 +203,7 @@ function App() {
           );
           const actives = sorted.filter(p => p.predicted_active).length;
           const qsar = normQsar(sorted, target.target_chembl_id);
-          appendLog('info', `  ${sorted.length} compounds processed`);
+          appendLog('info', `  ${sorted.length} compounds screened`);
           appendLog('info', `  ${actives} predicted active (p > 0.5)`);
           appendLog('ok', `QSAR complete · ${elapsed}s · top-${data.top_n.length} forwarded to docking`);
           setQsarResults(qsar);
@@ -376,6 +390,10 @@ function App() {
         onSelectRun={handleSelectRun}
         apiHealth="ok"
         showHistory={t.showHistory}
+        screeningMode={screeningMode}
+        onScreeningModeChange={setScreeningMode}
+        screeningSmiles={screeningSmiles}
+        onScreeningSmilesChange={setScreeningSmiles}
       />
 
       <main style={{ display: 'flex', flexDirection: 'column', minHeight: 0, position: 'relative' }}>

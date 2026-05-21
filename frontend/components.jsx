@@ -25,6 +25,120 @@ function BrandMark() {
   );
 }
 
+// ── ScreeningPanel ────────────────────────────────────────────────────────
+function parseSmilesCsv(text) {
+  const lines = text.trim().split('\n').map(l => l.trim()).filter(Boolean);
+  if (!lines.length) return [];
+  const smilesKeys = ['smiles', 'canonical_smiles', 'smile', 'structure'];
+  const firstLow = lines[0].toLowerCase();
+  const isHeader = smilesKeys.some(k => firstLow.includes(k));
+  let colIdx = 0;
+  let start = 0;
+  if (isHeader) {
+    const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/['"]/g, ''));
+    const found = headers.findIndex(h => smilesKeys.some(k => h.includes(k)));
+    colIdx = found >= 0 ? found : 0;
+    start = 1;
+  }
+  return lines.slice(start)
+    .map(line => (line.split(',')[colIdx] || '').trim().replace(/^["']|["']$/g, ''))
+    .filter(s => s.length > 2);
+}
+
+function ScreeningPanel({ mode, onModeChange, smiles, onSmilesChange }) {
+  const [smilesText, setSmilesText] = useState('');
+  const [csvName, setCsvName] = useState('');
+
+  const handleCsvUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCsvName(file.name);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const parsed = parseSmilesCsv(ev.target.result);
+      onSmilesChange(parsed);
+    };
+    reader.readAsText(file);
+  };
+
+  const handleSmilesText = (val) => {
+    setSmilesText(val);
+    const parsed = val.trim().split('\n').map(s => s.trim()).filter(s => s.length > 2);
+    onSmilesChange(parsed.length ? parsed : null);
+  };
+
+  const modeStyle = (v) => ({
+    flex: 1, padding: '4px 0', border: 0, borderRadius: 3,
+    background: mode === v ? 'var(--surface)' : 'transparent',
+    color: mode === v ? 'var(--ink)' : 'var(--ink-muted)',
+    cursor: 'pointer', fontWeight: 500, fontSize: 11,
+    boxShadow: mode === v ? '0 0 0 1px var(--hair-2), 0 1px 2px rgba(0,0,0,0.04)' : 'none',
+    fontFamily: 'var(--sans)',
+  });
+
+  return (
+    <div style={{ padding: '0 var(--pad-x) 12px' }}>
+      {/* mode toggle */}
+      <div style={{
+        display: 'flex', padding: 2,
+        background: 'var(--surface-2)', border: '1px solid var(--hair-2)',
+        borderRadius: 'var(--r)', marginBottom: 8,
+      }}>
+        {[['demo','Demo'],['csv','CSV'],['smiles','SMILES']].map(([v, l]) => (
+          <button key={v} style={modeStyle(v)} onClick={() => onModeChange(v)}>{l}</button>
+        ))}
+      </div>
+
+      {mode === 'demo' && (
+        <p style={{ margin: 0, fontSize: 11, color: 'var(--ink-muted)', lineHeight: 1.5 }}>
+          Uses the held-out ChEMBL test split as the screening library.
+        </p>
+      )}
+
+      {mode === 'csv' && (
+        <div>
+          <label style={{
+            display: 'flex', alignItems: 'center', gap: 7,
+            padding: '6px 10px', borderRadius: 'var(--r-sm)',
+            border: '1px dashed var(--hair-2)', cursor: 'pointer',
+            fontSize: 11.5, color: 'var(--ink-muted)',
+            background: 'var(--surface-2)',
+          }}>
+            <Icons.upload size={12} />
+            {csvName || 'Upload CSV…'}
+            <input type="file" accept=".csv,.txt" style={{ display: 'none' }} onChange={handleCsvUpload} />
+          </label>
+          {smiles?.length > 0 && (
+            <div style={{ marginTop: 5, fontSize: 10.5, color: 'var(--good)', fontFamily: 'var(--mono)' }}>
+              ✓ {smiles.length} compounds loaded
+            </div>
+          )}
+          <p style={{ margin: '5px 0 0', fontSize: 10.5, color: 'var(--ink-dim)', lineHeight: 1.4 }}>
+            CSV must have a "smiles" or "canonical_smiles" column (or SMILES as the first column).
+          </p>
+        </div>
+      )}
+
+      {mode === 'smiles' && (
+        <div>
+          <textarea
+            className="input"
+            style={{ width: '100%', height: 90, fontSize: 11, fontFamily: 'var(--mono)', resize: 'vertical', boxSizing: 'border-box' }}
+            placeholder={'CC(=O)Oc1ccccc1C(=O)O\nCCOC(=O)c1ccc(N)cc1\n…one SMILES per line'}
+            value={smilesText}
+            onChange={(e) => handleSmilesText(e.target.value)}
+          />
+          {smiles?.length > 0 && (
+            <div style={{ marginTop: 4, fontSize: 10.5, color: 'var(--good)', fontFamily: 'var(--mono)' }}>
+              ✓ {smiles.length} compounds
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Sidebar ───────────────────────────────────────────────────────────────
 function Sidebar({
   searchQuery, onSearch,
@@ -33,6 +147,8 @@ function Sidebar({
   recentRuns, onSelectRun,
   apiHealth,
   showHistory,
+  screeningMode, onScreeningModeChange,
+  screeningSmiles, onScreeningSmilesChange,
 }) {
   const sectionStyle = {
     padding: '14px var(--pad-x) 8px',
@@ -194,6 +310,21 @@ function Sidebar({
           </>
         )}
       </div>
+
+      {/* screening library panel — only when a target is selected */}
+      {selectedTarget && (
+        <div style={{ borderTop: '1px solid var(--hair-2)', paddingTop: 12 }}>
+          <div style={{ padding: '0 var(--pad-x) 8px', fontSize: 10, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--ink-muted)', display: 'flex', alignItems: 'center', gap: 5 }}>
+            <Icons.beaker size={10} /> Screening library
+          </div>
+          <ScreeningPanel
+            mode={screeningMode}
+            onModeChange={onScreeningModeChange}
+            smiles={screeningSmiles}
+            onSmilesChange={onScreeningSmilesChange}
+          />
+        </div>
+      )}
 
       {/* footer — health */}
       <div style={{
