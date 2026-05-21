@@ -1,0 +1,41 @@
+\documentclass[aspectratio=169]{beamer}
+\usetheme{Madrid}
+\usecolortheme{default}
+
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{xcolor}
+
+\definecolor{darkblue}{RGB}{0,51,102}
+\definecolor{apexblue}{RGB}{30,79,255}
+
+\setbeamercolor{structure}{fg=darkblue}
+\setbeamercolor{frametitle}{fg=white,bg=darkblue}
+\setbeamercolor{title}{fg=white,bg=darkblue}
+
+\title[APEX]{APEX: Automated Pipeline for Explorative Drug Discovery}
+\subtitle{A target-agnostic QSAR screening and molecular docking platform}
+\author{Behnam Lal}
+\institute{Computational Drug Discovery}
+\date{May 2026}
+
+\begin{document}
+
+\frame{\titlepage}
+
+\begin{frame}{Outline}
+  \tableofcontents
+\end{frame}
+
+\input{./slides/01_introduction.tex}
+\input{./slides/02_pipeline.tex}
+\input{./slides/03_data_qsar.tex}
+\input{./slides/04_docking.tex}
+\input{./slides/05_case_study.tex}
+\input{./slides/06_platform.tex}
+\input{./slides/07_summary.tex}
+
+\end{document}

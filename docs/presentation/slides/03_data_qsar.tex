@@ -1,0 +1,83 @@
+% ============================================================
+% SECTION: Data & QSAR
+% ============================================================
+\section{Data Ingestion \& QSAR Screening}
+
+\begin{frame}{ChEMBL Bioactivity Layer}
+  \begin{columns}[T]
+    \begin{column}{0.55\textwidth}
+      \begin{block}{ChEMBL Database}
+        \begin{itemize}
+          \item $>$19 million bioactivity records
+          \item $>$2 million unique compounds
+          \item Queried via REST API per target on demand
+        \end{itemize}
+      \end{block}
+      \vspace{0.3cm}
+      \begin{block}{Data Filtering Pipeline}
+        \begin{enumerate}
+          \item Fetch IC50 measurements (human assays, nM units)
+          \item Validate SMILES with RDKit \texttt{MolFromSmiles}
+          \item Label: IC50 $\leq$ 1000 nM $\Rightarrow$ \textbf{active}
+          \item Stratified 80/20 train/test split
+        \end{enumerate}
+      \end{block}
+    \end{column}
+    \begin{column}{0.42\textwidth}
+      \begin{exampleblock}{SQLite Cache}
+        All API responses are cached locally with a 7-day TTL.
+        Subsequent runs for the same target return in milliseconds.
+      \end{exampleblock}
+      \vspace{0.3cm}
+      \begin{alertblock}{Rate Limiting}
+        ChEMBL enforces rate limits. Retry logic with exponential
+        backoff (3 attempts, 5\,s base) prevents silent data loss.
+      \end{alertblock}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{QSAR Model Architecture}
+  \begin{columns}[T]
+    \begin{column}{0.52\textwidth}
+      \begin{block}{Molecular Featurisation}
+        \textbf{Morgan Fingerprints} (radius\,=\,2, 1024 bits)\\
+        Encode circular substructure neighbourhoods up to 2 bonds.
+
+        \vspace{0.25cm}
+        \textbf{RDKit Descriptors} (4 features concatenated):
+        \begin{itemize}
+          \item MolWt, LogP
+          \item \# H-bond donors (HBD)
+          \item \# H-bond acceptors (HBA)
+        \end{itemize}
+
+        \vspace{0.25cm}
+        Combined feature vector: $\mathbf{x} \in \mathbb{R}^{1028}$
+      \end{block}
+    \end{column}
+    \begin{column}{0.45\textwidth}
+      \begin{block}{Random Forest Classifier}
+        \begin{itemize}
+          \item 500 estimators
+          \item 5-fold stratified cross-validation
+          \item Reports ROC-AUC and F1 on held-out test set
+        \end{itemize}
+      \end{block}
+      \vspace{0.3cm}
+      \begin{exampleblock}{Output}
+        Per-compound predicted activity probability $p \in [0,1]$.
+        Top-20 compounds ($p$ ranked descending) forwarded to docking.
+      \end{exampleblock}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{QSAR Screening Results}
+  \begin{center}
+    \includegraphics[width=0.88\textwidth]{../figs/qsar_metrics.png}
+  \end{center}
+  \textit{Left}: predicted activity probability distributions by class.
+  \textit{Right}: top-20 ranked compounds with active/inactive labels.
+  CDK2 (CHEMBL301) — CV AUC\,=\,0.943, Test F1\,=\,0.901.
+\end{frame}

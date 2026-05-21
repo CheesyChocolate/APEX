@@ -1,0 +1,13 @@
+_latexmk/
+!*.pdf
+
+*.aux
+*.log
+*.synctex.gz
+*.toc
+*.nav
+*.snm
+*.out
+*.fls
+*.fdb_latexmk
+*.xdv

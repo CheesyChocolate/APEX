@@ -1,0 +1,52 @@
+% ============================================================
+% SECTION: Molecular Docking
+% ============================================================
+\section{Molecular Docking}
+
+\begin{frame}{AutoDock Vina Integration}
+  \begin{columns}[T]
+    \begin{column}{0.52\textwidth}
+      \begin{block}{Ligand Preparation}
+        \begin{enumerate}
+          \item SMILES $\rightarrow$ 3D conformer (RDKit ETKDGv3)
+          \item Energy minimisation (MMFF94 force field)
+          \item Conversion to PDBQT (Open Babel)
+        \end{enumerate}
+      \end{block}
+      \vspace{0.3cm}
+      \begin{block}{Receptor Preparation}
+        \begin{enumerate}
+          \item Structure fetch: AlphaFold $\rightarrow$ RCSB PDB
+          \item Conversion to PDBQT
+          \item Binding box: BioPython $C_\alpha$ centroid + 10\,\AA\ padding
+        \end{enumerate}
+      \end{block}
+    \end{column}
+    \begin{column}{0.45\textwidth}
+      \begin{block}{Vina Scoring Function}
+        Combines:
+        \begin{itemize}
+          \item Steric (Gaussian) terms
+          \item Hydrogen-bond energy
+          \item Hydrophobic contacts
+          \item Torsional entropy penalty
+        \end{itemize}
+        Output: $\Delta G_{\text{bind}}$ in kcal/mol
+      \end{block}
+      \vspace{0.3cm}
+      \begin{exampleblock}{Exhaustiveness}
+        Set to 8 (default). Increase for larger binding pockets
+        at the cost of runtime.
+      \end{exampleblock}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Docking Results}
+  \begin{center}
+    \includegraphics[width=0.88\textwidth]{../figs/docking_scores.png}
+  \end{center}
+  \textit{Left}: full affinity distribution across screened candidates.
+  \textit{Right}: top-20 ranked hits coloured by binding strength
+  (green $\leq -10$\,kcal/mol, yellow moderate, red $\geq -4$\,kcal/mol).
+\end{frame}

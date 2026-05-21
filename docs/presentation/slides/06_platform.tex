@@ -1,0 +1,37 @@
+% ============================================================
+% SECTION: Web Platform
+% ============================================================
+\section{Web Platform}
+
+\begin{frame}{APEX Web Platform}
+  \begin{columns}[T]
+    \begin{column}{0.52\textwidth}
+      \begin{block}{Backend — FastAPI}
+        \begin{itemize}
+          \item \texttt{GET /targets/search?q=} — ChEMBL target lookup
+          \item \texttt{POST /qsar/\{target\_id\}} — train + predict
+          \item \texttt{GET /structures/\{uniprot\_id\}} — AlphaFold/PDB fetch
+          \item \texttt{POST /docking/} — Vina run, ranked results
+        \end{itemize}
+        All routes are independently callable; each service is
+        independently cacheable and testable.
+      \end{block}
+    \end{column}
+    \begin{column}{0.45\textwidth}
+      \begin{block}{Frontend — React}
+        \begin{itemize}
+          \item Sidebar target search
+          \item Real-time pipeline status log
+          \item QSAR results table with activity probabilities
+          \item Docking hit ranking with affinity heat colours
+          \item Compound compare overlay
+        \end{itemize}
+      \end{block}
+      \vspace{0.2cm}
+      \begin{exampleblock}{No Build Step}
+        Single \texttt{index.html} with CDN React — open directly
+        in a browser or serve with any static file server.
+      \end{exampleblock}
+    \end{column}
+  \end{columns}
+\end{frame}

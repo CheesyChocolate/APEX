@@ -1,0 +1,49 @@
+% ============================================================
+% SECTION: Case Study
+% ============================================================
+\section{Case Study: CDK2}
+
+\begin{frame}{Case Study — Cyclin-Dependent Kinase 2 (CDK2)}
+  \begin{columns}[T]
+    \begin{column}{0.55\textwidth}
+      \begin{block}{Target Profile}
+        \begin{description}
+          \item[ChEMBL ID] CHEMBL301
+          \item[UniProt] P24941
+          \item[Function] Cell cycle regulator (G1/S transition)
+          \item[Disease link] Cancer (overexpression in many tumours)
+          \item[Records] 998 IC50 measurements retrieved
+        \end{description}
+      \end{block}
+      \vspace{0.3cm}
+      \begin{block}{QSAR Outcome}
+        \begin{itemize}
+          \item CV ROC-AUC: \textbf{0.943} $\pm$ 0.012
+          \item Test F1: \textbf{0.901}
+          \item Training time: $<$ 30\,s
+        \end{itemize}
+      \end{block}
+    \end{column}
+    \begin{column}{0.42\textwidth}
+      \begin{exampleblock}{Docking — Top Hit}
+        Best binding affinity: \textbf{$-$10.8\,kcal/mol}\\
+        \vspace{0.15cm}
+        Affinity range of top-20: $-$10.8 to $-$6.5\,kcal/mol\\
+        \vspace{0.15cm}
+        Compounds with $\Delta G < -9\,\text{kcal/mol}$: \textbf{6/20}
+      \end{exampleblock}
+      \vspace{0.3cm}
+      \begin{block}{Total Pipeline Runtime}
+        \begin{tabular}{lr}
+          \toprule
+          Stage & Time \\
+          \midrule
+          ChEMBL fetch & $\sim$110\,s \\
+          QSAR training & $<$30\,s \\
+          Docking (20 lig.) & $\sim$5\,min \\
+          \bottomrule
+        \end{tabular}
+      \end{block}
+    \end{column}
+  \end{columns}
+\end{frame}
