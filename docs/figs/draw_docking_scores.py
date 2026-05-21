@@ -3,16 +3,18 @@ Docking scores figure — binding affinity distribution and ranked hit chart.
 Reads docs/data/docking_results.json produced after docking run.
 Run: cd docs/figs && python draw_docking_scores.py
 """
+
 import json
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+import matplotlib.pyplot as plt
 import numpy as np
 
 DATA = Path(__file__).parents[1] / "data" / "docking_results.json"
 OUT = Path(__file__).parent / "docking_scores.png"
 BG = "#F8F9FA"
+
 
 # Colour scale: green (very negative) → yellow → red (near zero)
 def affinity_color(val: float) -> str:
@@ -46,9 +48,21 @@ def main():
 
     # Left: histogram of binding affinities
     ax = axes[0]
-    ax.hist(affinities, bins=20, color="#4A90D9", edgecolor="white", linewidth=0.5, alpha=0.85)
-    ax.axvline(np.median(affinities), color="#E74C3C", linestyle="--",
-               linewidth=1.5, label=f"Median: {np.median(affinities):.1f} kcal/mol")
+    ax.hist(
+        affinities,
+        bins=20,
+        color="#4A90D9",
+        edgecolor="white",
+        linewidth=0.5,
+        alpha=0.85,
+    )
+    ax.axvline(
+        np.median(affinities),
+        color="#E74C3C",
+        linestyle="--",
+        linewidth=1.5,
+        label=f"Median: {np.median(affinities):.1f} kcal/mol",
+    )
     ax.set_xlabel("Binding Affinity (kcal/mol)", fontsize=11)
     ax.set_ylabel("Count", fontsize=11)
     ax.set_title("Affinity Distribution", fontsize=12, fontweight="bold")
@@ -61,8 +75,13 @@ def main():
     top = valid[:20]
     xs = range(len(top))
     colors = [affinity_color(r["affinity_kcal_mol"]) for r in top]
-    bars = ax.bar(xs, [abs(r["affinity_kcal_mol"]) for r in top],
-                  color=colors, edgecolor="white", linewidth=0.5)
+    ax.bar(
+        xs,
+        [abs(r["affinity_kcal_mol"]) for r in top],
+        color=colors,
+        edgecolor="white",
+        linewidth=0.5,
+    )
     ax.set_xlabel("Rank", fontsize=11)
     ax.set_ylabel("|Binding Affinity| (kcal/mol)", fontsize=11)
     ax.set_title("Top-20 Docking Hits", fontsize=12, fontweight="bold")

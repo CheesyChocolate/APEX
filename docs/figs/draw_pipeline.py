@@ -2,11 +2,11 @@
 Pipeline architecture figure — full APEX workflow from target selection to ranked hits.
 Run: cd docs/figs && python draw_pipeline.py
 """
+
 from pathlib import Path
 
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
-import matplotlib.patheffects as pe
 
 OUT = Path(__file__).parent / "pipeline.png"
 
@@ -60,16 +60,24 @@ def draw_box(ax, x, y, label, color, fontsize=8.5):
     )
     ax.add_patch(rect)
     ax.text(
-        x, y, label,
-        ha="center", va="center",
-        fontsize=fontsize, color="white", fontweight="bold",
-        zorder=4, linespacing=1.3,
+        x,
+        y,
+        label,
+        ha="center",
+        va="center",
+        fontsize=fontsize,
+        color="white",
+        fontweight="bold",
+        zorder=4,
+        linespacing=1.3,
     )
 
 
 def draw_arrow(ax, x1, x2, y):
     ax.annotate(
-        "", xy=(x2 - BOX_W / 2, y), xytext=(x1 + BOX_W / 2, y),
+        "",
+        xy=(x2 - BOX_W / 2, y),
+        xytext=(x1 + BOX_W / 2, y),
         arrowprops=dict(arrowstyle="-|>", color=COLORS["arrow"], lw=1.5),
         zorder=2,
     )
@@ -84,29 +92,67 @@ for i, ((label, color), x) in enumerate(zip(STEPS, xs)):
 # Cache annotation under ChEMBL box
 cache_x, cache_y = xs[1], Y_CENTER - 1.35
 rect_c = mpatches.FancyBboxPatch(
-    (cache_x - 0.65, cache_y - 0.3), 1.3, 0.6,
+    (cache_x - 0.65, cache_y - 0.3),
+    1.3,
+    0.6,
     boxstyle="round,pad=0.05",
-    facecolor="#95A5A6", edgecolor="white", linewidth=1, zorder=3,
+    facecolor="#95A5A6",
+    edgecolor="white",
+    linewidth=1,
+    zorder=3,
 )
 ax.add_patch(rect_c)
-ax.text(cache_x, cache_y, CACHE_LABEL, ha="center", va="center",
-        fontsize=7.5, color="white", fontweight="bold", zorder=4)
-ax.annotate("", xy=(xs[1], Y_CENTER - BOX_H / 2),
-            xytext=(cache_x, cache_y + 0.3),
-            arrowprops=dict(arrowstyle="<->", color="#95A5A6", lw=1.2), zorder=2)
+ax.text(
+    cache_x,
+    cache_y,
+    CACHE_LABEL,
+    ha="center",
+    va="center",
+    fontsize=7.5,
+    color="white",
+    fontweight="bold",
+    zorder=4,
+)
+ax.annotate(
+    "",
+    xy=(xs[1], Y_CENTER - BOX_H / 2),
+    xytext=(cache_x, cache_y + 0.3),
+    arrowprops=dict(arrowstyle="<->", color="#95A5A6", lw=1.2),
+    zorder=2,
+)
 
 # QSAR detail annotation
 qsar_x = xs[3]
-ax.text(qsar_x, Y_CENTER + 1.1, QSAR_DETAIL,
-        ha="center", va="bottom", fontsize=7, color="#555",
-        style="italic", linespacing=1.3)
-ax.annotate("", xy=(qsar_x, Y_CENTER + BOX_H / 2),
-            xytext=(qsar_x, Y_CENTER + 0.85),
-            arrowprops=dict(arrowstyle="-", color="#AAA", lw=1), zorder=2)
+ax.text(
+    qsar_x,
+    Y_CENTER + 1.1,
+    QSAR_DETAIL,
+    ha="center",
+    va="bottom",
+    fontsize=7,
+    color="#555",
+    style="italic",
+    linespacing=1.3,
+)
+ax.annotate(
+    "",
+    xy=(qsar_x, Y_CENTER + BOX_H / 2),
+    xytext=(qsar_x, Y_CENTER + 0.85),
+    arrowprops=dict(arrowstyle="-", color="#AAA", lw=1),
+    zorder=2,
+)
 
 # Title
-ax.text(7, 4.7, "APEX Pipeline", ha="center", va="top",
-        fontsize=13, fontweight="bold", color="#333")
+ax.text(
+    7,
+    4.7,
+    "APEX Pipeline",
+    ha="center",
+    va="top",
+    fontsize=13,
+    fontweight="bold",
+    color="#333",
+)
 
 # Legend
 legend_items = [
@@ -116,8 +162,14 @@ legend_items = [
     mpatches.Patch(facecolor=COLORS["dock"], label="Docking"),
     mpatches.Patch(facecolor=COLORS["output"], label="Output"),
 ]
-ax.legend(handles=legend_items, loc="lower right", fontsize=7.5,
-          framealpha=0.8, ncol=5, bbox_to_anchor=(1.0, 0.0))
+ax.legend(
+    handles=legend_items,
+    loc="lower right",
+    fontsize=7.5,
+    framealpha=0.8,
+    ncol=5,
+    bbox_to_anchor=(1.0, 0.0),
+)
 
 plt.tight_layout()
 plt.savefig(OUT, dpi=300, bbox_inches="tight", facecolor=COLORS["bg"])
