@@ -8,11 +8,10 @@ from app.services import chembl_cache
 logger = get_logger(__name__)
 
 BASE_URL = "https://www.ebi.ac.uk/chembl/api/data"
-# Bioactivity fetch can be very slow; 90s covers most cases
-BIOACTIVITY_TIMEOUT = 90
+BIOACTIVITY_TIMEOUT = 120
 SEARCH_TIMEOUT = 30
-MAX_RETRIES = 3
-RETRY_BACKOFF = 5  # seconds between retries
+MAX_RETRIES = 4
+RETRY_BACKOFF = 30  # base seconds; multiplied by attempt number
 
 
 def _get(url: str, params: dict, timeout: int) -> dict:
@@ -74,7 +73,7 @@ def fetch_bioactivity(chembl_target_id: str, max_records: int = 5000) -> list[di
     logger.info("Bioactivity '%s': fetching from ChEMBL (slow)...", chembl_target_id)
     t0 = time.time()
     all_records: list[dict] = []
-    limit = 100
+    limit = 1000
     offset = 0
 
     while len(all_records) < max_records:

@@ -172,7 +172,7 @@ function App() {
     setPipelineStatus('running-qsar');
     setElapsedMs(0);
 
-    if (API) {
+    if (API !== null) {
       const target = selectedTarget;
       const t0 = Date.now();
       appendLog('info', `→ POST /qsar/${target.target_chembl_id}`);
@@ -216,7 +216,7 @@ function App() {
     setActiveTab('docking');
     setLogLines(prev => [...prev, { level: 'info', text: '', timestamp: '', _sep: true }]);
 
-    if (API) {
+    if (API !== null) {
       const t0 = Date.now();
       appendLog('info', `→ POST /docking/  uniprot=${target.uniprot}  n_ligands=20`);
       appendLog('info', `Fetching AlphaFold structure for ${target.uniprot}…`);
