@@ -176,14 +176,14 @@ def _get_box(receptor_pdb: Path, uniprot_id: str | None = None) -> tuple[dict, P
     """
     Resolve docking search box and the receptor file to dock into.
 
-    Returns (box, receptor_path) — the receptor_path may differ from receptor_pdb
-    when an RCSB co-crystal is used, because box coordinates and receptor MUST be
-    from the same structure (different PDB files have independent coordinate frames).
+    Returns (box, receptor_path). Two-tier priority:
+      1. HETATM ligand in the supplied receptor PDB → use its centroid + same file.
+      2. Protein geometric centroid of the supplied receptor → fallback, logs INFO.
 
-    Three-tier priority:
-      1. HETATM ligand in the supplied receptor PDB → box + same file as receptor.
-      2. RCSB co-crystal lookup → box + that PDB saved locally as receptor.
-      3. Protein centroid fallback → box + original receptor (logs WARNING).
+    _box_from_rcsb_cocrystal is available but not invoked automatically: raw RCSB
+    PDBs (multi-chain assemblies, open/closed conformations, residual ligands) have
+    produced weaker docking scores than the AlphaFold centroid baseline in practice.
+    Use it explicitly via box_override in run() if you have a known binding site.
     """
     import numpy as np
     from Bio.PDB import PDBParser
@@ -206,14 +206,7 @@ def _get_box(receptor_pdb: Path, uniprot_id: str | None = None) -> tuple[dict, P
             "size_z": float(size[2]),
         }, receptor_pdb
 
-    # Tier 2 — fetch a co-crystal PDB from RCSB; dock into THAT file
-    if uniprot_id:
-        result = _box_from_rcsb_cocrystal(uniprot_id)
-        if result is not None:
-            box, cocrystal_path = result
-            return box, cocrystal_path
-
-    # Tier 3 — no known binding site; use protein centroid of the original receptor
+    # Tier 2 — protein centroid of the supplied receptor
     all_coords = [atom.coord for atom in structure.get_atoms()]
     if not all_coords:
         raise DockingError("No atoms found in receptor PDB")
@@ -221,8 +214,8 @@ def _get_box(receptor_pdb: Path, uniprot_id: str | None = None) -> tuple[dict, P
     center = arr.mean(axis=0)
     size = (arr.max(0) - arr.min(0)) * 0.5 + 10
     size = size.clip(max=30)
-    logger.warning(
-        "Docking box falls back to protein centroid — binding site unknown for %s",
+    logger.info(
+        "Docking box centred on protein centroid for %s",
         uniprot_id or receptor_pdb.name,
     )
     return {
