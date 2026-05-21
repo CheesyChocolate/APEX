@@ -118,9 +118,9 @@ These plots show the docking output for the CDK2 case study — twenty compounds
 
 The left panel is the full affinity distribution. The histogram shows that most screened compounds cluster between minus seven and minus ten kilocalories per mole — a realistic range for drug-like molecules against a well-defined kinase binding site. The median affinity, shown by the red dashed line, gives a quick reference for what constitutes a strong versus weak hit in this particular run.
 
-The right panel ranks the top twenty hits by affinity. The color coding follows the heat scale shown in the legend: green for strong binders below minus ten kilocalories per mole, transitioning through yellow for moderate binders, and red for weaker ones above minus four. Notice that the top six compounds cluster in the green zone — these are the candidates that would move to experimental validation.
+The right panel ranks the top twenty hits by affinity. The color coding follows the heat scale shown in the legend: green for strong binders below minus nine kilocalories per mole, transitioning through yellow for moderate binders, and red for weaker ones. Three compounds cluster in the strong-binding zone — these are the candidates that would move to experimental validation.
 
-A binding affinity of minus ten kilocalories per mole corresponds roughly to a dissociation constant in the low nanomolar range, which is the target for a useful drug candidate. The top hit at minus 10.8 is a strong result for an automated, no-manual-intervention docking run.
+A binding affinity around minus nine to minus nine and a half kilocalories per mole corresponds roughly to a dissociation constant in the low nanomolar range, which is the target for a useful drug candidate. The top hit at minus 9.5 is a solid result for an automated, no-manual-intervention docking run against an AlphaFold-predicted structure.
 
 **NEXT SLIDE**
 
@@ -132,7 +132,7 @@ CDK2 is a serine/threonine kinase that drives the cell cycle transition from G1 
 
 The APEX run on CDK2 retrieved 998 IC50 measurements from ChEMBL on the first call, which took about a hundred and ten seconds. The QSAR model trained in under thirty seconds and produced the strong metrics shown earlier — AUC 0.943, F1 0.901.
 
-Twenty compounds were forwarded to docking. The full docking run — ligand preparation, receptor preparation, Vina execution, score parsing — completes in roughly five minutes for twenty ligands. The top hit achieved minus 10.8 kilocalories per mole. Six of the twenty compounds scored below minus nine, which represents a genuinely selective and potent binding prediction.
+Twenty compounds were forwarded to docking against the AlphaFold-predicted CDK2 structure. The full docking run — ligand preparation, receptor conversion, Vina execution, score parsing — completes in roughly five minutes for twenty ligands. The top hit achieved minus 9.5 kilocalories per mole. Three of the twenty compounds scored at or below minus nine, representing strong predicted binders worth prioritizing for synthesis.
 
 The total wall-clock time from target name to ranked docking results, excluding the initial ChEMBL cache build, is under four minutes. That's the speed claim this platform is built on.
 
@@ -156,7 +156,7 @@ The backend address is configurable via a single line in the HTML file. Setting 
 
 APEX delivers what it promises: type in a target name, get back a ranked list of docking hits. The pipeline covers data ingestion, compound screening, structure retrieval, and docking in a single automated workflow, with a web interface that makes the results accessible without a computational background.
 
-The CDK2 results validate the approach: a QSAR model with AUC above 0.94 trained on real ChEMBL data, and docking hits reaching minus 10.8 kilocalories per mole in the top position. These are numbers a medicinal chemist would take seriously as starting points for experimental follow-up.
+The CDK2 results validate the approach: a QSAR model with AUC above 0.94 trained on real ChEMBL data, and docking hits reaching minus 9.5 kilocalories per mole in the top position against the AlphaFold-predicted structure. These are numbers a medicinal chemist would take seriously as starting points for experimental follow-up.
 
 The next development priorities are clear. The most impactful extension is integrating a large virtual library — Enamine REAL, with over seven billion purchasable compounds — so the QSAR model screens a genuinely novel chemical space rather than re-ranking known ChEMBL compounds. After that: ensemble QSAR models, ADMET filtering to remove compounds with poor drug-like properties before docking, and three-dimensional binding pose visualization directly in the browser.
 
