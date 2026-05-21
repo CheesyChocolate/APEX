@@ -25,7 +25,6 @@ ACTIVE_THRESHOLD_NM = 1000  # IC50 ≤ this → active (label=1)
 TOP_N_FOR_DOCKING = 20  # top QSAR candidates passed to docking
 
 # Docking
-VINA_BINARY = os.getenv("APEX_VINA_BINARY", "vina")
 VINA_EXHAUSTIVENESS = 8
 
 # Cache TTL

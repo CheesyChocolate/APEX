@@ -1,14 +1,19 @@
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
-from app.core.config import VINA_BINARY, VINA_EXHAUSTIVENESS
+from app.core.config import VINA_EXHAUSTIVENESS
 from app.core.exceptions import DockingError
 from app.core.logging import get_logger
 from rdkit.Chem import AddHs, MolFromSmiles, MolToMolBlock
 from rdkit.Chem.AllChem import EmbedMolecule, MMFFOptimizeMolecule
 
 logger = get_logger(__name__)
+
+# Use the obabel binary bundled in the project's own venv.
+_VENV_BIN = Path(sys.executable).parent
+_OBABEL = str(_VENV_BIN / "obabel")
 
 
 def _smiles_to_pdbqt(smiles: str, work_dir: Path) -> Path:
@@ -20,13 +25,12 @@ def _smiles_to_pdbqt(smiles: str, work_dir: Path) -> Path:
         raise DockingError(f"3D embedding failed for: {smiles[:40]}")
     MMFFOptimizeMolecule(mol)
 
-    # Write SDF then convert to pdbqt via obabel
     sdf_path = work_dir / "ligand.sdf"
     pdbqt_path = work_dir / "ligand.pdbqt"
     sdf_path.write_text(MolToMolBlock(mol))
 
     result = subprocess.run(
-        ["obabel", str(sdf_path), "-O", str(pdbqt_path), "--gen3d"],
+        [_OBABEL, str(sdf_path), "-O", str(pdbqt_path), "--gen3d"],
         capture_output=True,
         text=True,
     )
@@ -38,7 +42,7 @@ def _smiles_to_pdbqt(smiles: str, work_dir: Path) -> Path:
 def _receptor_to_pdbqt(receptor_pdb: Path, work_dir: Path) -> Path:
     pdbqt_path = work_dir / "receptor.pdbqt"
     result = subprocess.run(
-        ["obabel", str(receptor_pdb), "-O", str(pdbqt_path), "-xr"],
+        [_OBABEL, str(receptor_pdb), "-O", str(pdbqt_path), "-xr"],
         capture_output=True,
         text=True,
     )
@@ -47,19 +51,9 @@ def _receptor_to_pdbqt(receptor_pdb: Path, work_dir: Path) -> Path:
     return pdbqt_path
 
 
-def _parse_vina_score(output: str) -> float:
-    for line in output.splitlines():
-        parts = line.split()
-        if parts and parts[0] == "1":
-            try:
-                return float(parts[1])
-            except (IndexError, ValueError):
-                pass
-    raise DockingError(f"Could not parse Vina score from output:\n{output[:300]}")
-
-
 def _get_box(receptor_pdb: Path) -> dict:
-    """Estimate docking box from receptor atom coordinates."""
+    """Estimate docking box from receptor Cα centroid."""
+    import numpy as np
     from Bio.PDB import PDBParser
 
     parser = PDBParser(QUIET=True)
@@ -67,12 +61,10 @@ def _get_box(receptor_pdb: Path) -> dict:
     coords = [atom.coord for atom in structure.get_atoms()]
     if not coords:
         raise DockingError("No atoms found in receptor PDB")
-    import numpy as np
-
     arr = np.array(coords)
     center = arr.mean(axis=0)
     size = (arr.max(axis=0) - arr.min(axis=0)) + 10  # 10 Å padding
-    size = size.clip(max=30)  # cap at 30 Å per axis
+    size = size.clip(max=30)
     return {
         "center_x": float(center[0]),
         "center_y": float(center[1]),
@@ -81,6 +73,21 @@ def _get_box(receptor_pdb: Path) -> dict:
         "size_y": float(size[1]),
         "size_z": float(size[2]),
     }
+
+
+def _dock_one(receptor_pdbqt: Path, ligand_pdbqt: Path, box: dict) -> float:
+    from vina import Vina
+
+    v = Vina(sf_name="vina", verbosity=0)
+    v.set_receptor(str(receptor_pdbqt))
+    v.set_ligand_from_file(str(ligand_pdbqt))
+    v.compute_vina_maps(
+        center=[box["center_x"], box["center_y"], box["center_z"]],
+        box_size=[box["size_x"], box["size_y"], box["size_z"]],
+    )
+    v.dock(exhaustiveness=VINA_EXHAUSTIVENESS, n_poses=1)
+    energies = v.energies(n_poses=1)
+    return float(energies[0][0])
 
 
 def run(receptor_pdb: Path, smiles_list: list[str]) -> list[dict]:
@@ -111,39 +118,12 @@ def run(receptor_pdb: Path, smiles_list: list[str]) -> list[dict]:
             lig_dir.mkdir()
             try:
                 ligand_pdbqt = _smiles_to_pdbqt(smiles, lig_dir)
-                out_pdbqt = lig_dir / "out.pdbqt"
-
-                cmd = [
-                    VINA_BINARY,
-                    "--receptor",
-                    str(receptor_pdbqt),
-                    "--ligand",
-                    str(ligand_pdbqt),
-                    "--out",
-                    str(out_pdbqt),
-                    "--exhaustiveness",
-                    str(VINA_EXHAUSTIVENESS),
-                    "--center_x",
-                    str(box["center_x"]),
-                    "--center_y",
-                    str(box["center_y"]),
-                    "--center_z",
-                    str(box["center_z"]),
-                    "--size_x",
-                    str(box["size_x"]),
-                    "--size_y",
-                    str(box["size_y"]),
-                    "--size_z",
-                    str(box["size_z"]),
-                ]
-                proc = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-                score = _parse_vina_score(proc.stdout)
+                score = _dock_one(receptor_pdbqt, ligand_pdbqt, box)
                 results.append({"smiles": smiles, "affinity_kcal_mol": score})
                 logger.debug(
                     "Docked %d/%d: %.2f kcal/mol", i + 1, len(smiles_list), score
                 )
-
-            except (DockingError, subprocess.TimeoutExpired, FileNotFoundError) as e:
+            except Exception as e:
                 logger.warning("Docking failed for compound %d: %s", i, e)
                 results.append(
                     {"smiles": smiles, "affinity_kcal_mol": None, "error": str(e)}
