@@ -173,8 +173,11 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
-# Other files
+# auto-generated files
+logs/
 
+# Other files
 archive/
 AGENTS.md
 CLAUDE.md
+PLAN.md
