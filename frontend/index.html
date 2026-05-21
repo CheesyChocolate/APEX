@@ -9,6 +9,10 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,200;0,6..72,300;0,6..72,400;1,6..72,300&display=swap" rel="stylesheet" />
 
 <script>
+// Backend API base URL — change to point at a running APEX backend instance.
+// Set to null to run in demo-only mode (mock data, no real API calls).
+window.APEX_API_URL = 'http://localhost:8000';
+
 // EDITMODE block — host rewrites this in place when tweaks are persisted.
 window.TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "accent": "#1E4FFF",

@@ -4,6 +4,38 @@
 
 const { useState: aUseState, useEffect: aUseEffect, useRef: aUseRef, useMemo: aUseMemo, useCallback: aUseCallback } = React;
 
+// ── API helpers ───────────────────────────────────────────────────────────────
+const API = window.APEX_API_URL || null;
+
+async function apiRunQsar(targetId) {
+  const res = await fetch(`${API}/qsar/${encodeURIComponent(targetId)}`, { method: 'POST' });
+  if (!res.ok) throw new Error(`QSAR failed: ${res.status} ${res.statusText}`);
+  return res.json(); // { chembl_target_id, predictions: [{smiles, activity_probability, predicted_active}], top_n }
+}
+
+async function apiRunDocking(uniprotId, smilesList, pdbId) {
+  const body = { uniprot_id: uniprotId, smiles_list: smilesList };
+  if (pdbId) body.pdb_id = pdbId;
+  const res = await fetch(`${API}/docking/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Docking failed: ${res.status} ${res.statusText}`);
+  return res.json(); // [{smiles, affinity_kcal_mol, rank, error}]
+}
+
+// Normalise backend QSAR predictions to the shape the UI expects.
+function normQsar(predictions, targetId) {
+  return predictions.map((p, i) => ({
+    id: `${targetId}-q${i}`,
+    smiles: p.smiles,
+    activity_probability: p.activity_probability,
+    predicted_active: p.predicted_active,
+    mw: null, logp: null, hbd: null, hba: null, tpsa: null,
+  }));
+}
+
 // Speed multiplier on the streamed log delays — < 1 makes the demo snappier
 // while preserving the rhythm of each stage. Adjustable via tweaks.
 const SPEED_PROFILES = {
@@ -52,7 +84,7 @@ function App() {
     );
   }, [searchQuery]);
 
-  const qsarDone = pipelineStatus === 'qsar-done' || pipelineStatus === 'running-docking' || pipelineStatus === 'done';
+  const qsarDone = pipelineStatus === 'qsar-done' || pipelineStatus === 'running-docking' || pipelineStatus === 'done' || pipelineStatus === 'failed-docking';
   const dockingDone = pipelineStatus === 'done';
   const isRunning = pipelineStatus === 'running-qsar' || pipelineStatus === 'running-docking';
 
@@ -122,6 +154,10 @@ function App() {
     timersRef.current.push(tid);
   };
 
+  const appendLog = (level, text) => {
+    setLogLines(prev => [...prev, { level, text, timestamp: tsNow() }]);
+  };
+
   const handleRun = () => {
     if (!selectedTarget) return;
     cancelTimers();
@@ -135,35 +171,76 @@ function App() {
     setPipelineStatus('running-qsar');
     setElapsedMs(0);
 
-    streamSequence(QSAR_LOG_SEQUENCE(selectedTarget), () => {
-      const qsar = generateQsarPredictions(selectedTarget.target_chembl_id, 40);
-      setQsarResults(qsar);
-      setPipelineStatus('qsar-done');
-      if (runMode === 'auto') {
-        // continue automatically
-        setTimeout(() => runDocking(qsar), 300);
-      }
-    });
+    if (API) {
+      // Real backend mode
+      appendLog('info', `→ POST /qsar/${selectedTarget.target_chembl_id}`);
+      appendLog('info', `Fetching ChEMBL bioactivity and training QSAR model…`);
+      const target = selectedTarget;
+      apiRunQsar(target.target_chembl_id)
+        .then(data => {
+          const sorted = [...data.predictions].sort(
+            (a, b) => b.activity_probability - a.activity_probability,
+          );
+          const qsar = normQsar(sorted, target.target_chembl_id);
+          appendLog('ok', `QSAR complete · ${qsar.length} predictions · top-${data.top_n.length} selected for docking`);
+          setQsarResults(qsar);
+          setPipelineStatus('qsar-done');
+          if (runMode === 'auto') setTimeout(() => runDocking(qsar, target), 300);
+        })
+        .catch(err => {
+          appendLog('err', `QSAR error: ${err.message}`);
+          setPipelineStatus('failed-qsar');
+        });
+    } else {
+      // Demo mode — mock data
+      streamSequence(QSAR_LOG_SEQUENCE(selectedTarget), () => {
+        const qsar = generateQsarPredictions(selectedTarget.target_chembl_id, 40);
+        setQsarResults(qsar);
+        setPipelineStatus('qsar-done');
+        if (runMode === 'auto') setTimeout(() => runDocking(qsar), 300);
+      });
+    }
   };
 
-  const runDocking = (qsarOrNull) => {
+  const runDocking = (qsarOrNull, targetOverride) => {
     const qsar = qsarOrNull || qsarResults;
+    const target = targetOverride || selectedTarget;
     if (!qsar) return;
     cancelTimers();
     setPipelineStatus('running-docking');
     setActiveTab('docking');
     setLogLines(prev => [...prev, { level: 'info', text: '', timestamp: '', _sep: true }]);
-    streamSequence(DOCKING_LOG_SEQUENCE(selectedTarget), () => {
+
+    if (API) {
+      appendLog('info', `→ POST /docking/  uniprot=${target.uniprot}  n_ligands=20`);
+      appendLog('info', `Fetching structure for UniProt ${target.uniprot} and running AutoDock Vina…`);
       const top20 = qsar.slice(0, 20).map(r => r.smiles);
-      const docking = generateDockingResults(selectedTarget.target_chembl_id, top20);
-      setDockingResults(docking);
-      setPipelineStatus('done');
-    });
+      apiRunDocking(target.uniprot, top20, target.pdb)
+        .then(results => {
+          appendLog('ok', `Docking complete · top affinity = ${results[0]?.affinity_kcal_mol?.toFixed(1) ?? 'n/a'} kcal/mol`);
+          setDockingResults(results);
+          setPipelineStatus('done');
+        })
+        .catch(err => {
+          appendLog('err', `Docking error: ${err.message}`);
+          setPipelineStatus('failed-docking');
+        });
+    } else {
+      streamSequence(DOCKING_LOG_SEQUENCE(target), () => {
+        const top20 = qsar.slice(0, 20).map(r => r.smiles);
+        const docking = generateDockingResults(target.target_chembl_id, top20);
+        setDockingResults(docking);
+        setPipelineStatus('done');
+      });
+    }
   };
 
   const handleCancel = () => {
     cancelTimers();
-    setPipelineStatus(qsarDone && !dockingDone ? 'qsar-done' : 'idle');
+    const cur = pipelineStatus;
+    setPipelineStatus(
+      (cur === 'running-docking' || cur === 'qsar-done') ? 'qsar-done' : 'idle'
+    );
     setLogLines(prev => [...prev, { level: 'err', text: '✕ cancelled by user', timestamp: tsNow() }]);
   };
 
