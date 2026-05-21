@@ -93,36 +93,31 @@
   \begin{columns}[T]
     \begin{column}{0.50\textwidth}
       \begin{block}{Step 1 — Lipinski Rule of Five}
-        Drug-likeness gate applied to predicted actives:
-        \begin{itemize}
+        {\small Drug-likeness gate on predicted actives:
+        \begin{itemize}\setlength{\itemsep}{1pt}
           \item MW $\leq$ 500\,Da
           \item LogP $\leq$ 5
-          \item HBD $\leq$ 5
-          \item HBA $\leq$ 10
+          \item HBD $\leq$ 5,\quad HBA $\leq$ 10
           \item TPSA $\leq$ 140\,\AA$^2$
         \end{itemize}
-        \small Falls back to all actives if none pass.
+        Falls back to all actives if none pass.}
       \end{block}
     \end{column}
     \begin{column}{0.47\textwidth}
-      \begin{block}{Step 2 — Max-Min Diversity Selection}
-        Greedy farthest-point algorithm on Tanimoto distance
-        over Morgan fingerprints:
-        \begin{enumerate}
+      \begin{block}{Step 2 — Max-Min Diversity}
+        {\small Greedy farthest-point on Tanimoto distance:
+        \begin{enumerate}\setlength{\itemsep}{1pt}
           \item Seed: highest-$p$ drug-like compound
-          \item Each step: add compound maximally distant
-                from all already selected
+          \item Add compound most dissimilar to all selected
           \item Stop at $N = 20$
         \end{enumerate}
-        \vspace{0.1cm}
-        \small $d_T(A,B) = 1 - \dfrac{|A \cap B|}{|A \cup B|}$
+        $d_T(A,B) = 1 - \frac{|A \cap B|}{|A \cup B|}$}
       \end{block}
     \end{column}
   \end{columns}
-  \vspace{0.15cm}
+  \vspace{-0.1cm}
   \begin{exampleblock}{Why Diversity?}
-    Similar scaffolds share binding modes — a top-20 of structurally
-    identical compounds wastes docking budget on a single binding hypothesis.
-    Max-min selection maximises binding-pocket exploration.
+    \small Similar scaffolds share binding modes — diversity maximises
+    binding-pocket exploration and avoids redundant docking runs.
   \end{exampleblock}
 \end{frame}
