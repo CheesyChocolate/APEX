@@ -118,12 +118,17 @@ def predict(smiles_list: list[str], model_path: Path) -> list[dict]:
 
 
 def _passes_lipinski(p: dict) -> bool:
+    mw = p.get("mw")
+    logp = p.get("logp")
+    hbd = p.get("hbd")
+    hba = p.get("hba")
+    tpsa = p.get("tpsa")
     return (
-        (p.get("mw") or 0) <= 500
-        and (p.get("logp") or 999) <= 5
-        and (p.get("hbd") or 0) <= 5
-        and (p.get("hba") or 0) <= 10
-        and (p.get("tpsa") or 0) <= 140
+        (mw is None or mw <= 500)
+        and (logp is None or logp <= 5)
+        and (hbd is None or hbd <= 5)
+        and (hba is None or hba <= 10)
+        and (tpsa is None or tpsa <= 140)
     )
 
 

@@ -15,8 +15,7 @@ def preprocess(records: list[dict]) -> tuple:
     """
     Convert raw ChEMBL bioactivity records to train/test splits.
 
-    Returns (X_train, X_test, y_train, y_test, smiles_train, smiles_test)
-    where X_* are placeholder arrays (featurization happens in qsar_pipeline).
+    Returns (smiles_train, smiles_test, y_train, y_test).
     """
     if not records:
         raise QSARError("No bioactivity records to preprocess")
