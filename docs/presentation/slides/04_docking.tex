@@ -3,7 +3,7 @@
 % ============================================================
 \section{Molecular Docking}
 
-\begin{frame}{AutoDock Vina Integration}
+\begin{frame}{AutoDock Vina: Molecule Preparation}
   \begin{columns}[T]
     \begin{column}{0.52\textwidth}
       \begin{block}{Ligand Preparation}
@@ -13,7 +13,8 @@
           \item PDBQT conversion (Open Babel \texttt{-{}-gen3d})
         \end{enumerate}
       \end{block}
-      \vspace{0.3cm}
+    \end{column}
+    \begin{column}{0.45\textwidth}
       \begin{block}{Receptor Preparation}
         \begin{enumerate}
           \item Structure fetch: AlphaFold $\rightarrow$ RCSB PDB
@@ -27,24 +28,42 @@
         \end{enumerate}
       \end{block}
     \end{column}
-    \begin{column}{0.45\textwidth}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{AutoDock Vina: Scoring \& Search}
+  \begin{columns}[T]
+    \begin{column}{0.52\textwidth}
       \begin{block}{Vina Scoring Function}
-        Combines:
+        Combines empirical energy terms:
         \begin{itemize}
           \item Steric (Gaussian) repulsion/attraction
           \item H-bond energy
           \item Hydrophobic contacts
           \item Torsional entropy penalty
         \end{itemize}
+        \vspace{0.15cm}
         Output: $\Delta G_{\text{bind}}$ (kcal/mol)\\
-        \small More negative $=$ tighter predicted binding.
+        More negative $=$ tighter predicted binding.\\
+        \vspace{0.1cm}
+        \small $\Delta G \leq -9$ kcal/mol $\approx$ low-nM $K_d$
       \end{block}
-      \vspace{0.3cm}
+    \end{column}
+    \begin{column}{0.45\textwidth}
       \begin{exampleblock}{Search Parameters}
-        Exhaustiveness\,=\,8 (default).\\
-        Up to 5 poses per ligand returned.\\
-        \small Box: 22.5\,\AA\ (co-crystal) or adaptive (centroid).
+        \begin{description}
+          \item[Exhaustiveness] 8 (default Monte Carlo steps)
+          \item[Poses] Up to 5 per ligand
+          \item[Box size] 22.5\,\AA\ (co-crystal) or adaptive (centroid fallback)
+        \end{description}
       \end{exampleblock}
+      \vspace{0.3cm}
+      \begin{alertblock}{Limitation}
+        Vina scores correlate with experimental $K_d$ in
+        benchmarks but are a scoring approximation, not
+        a thermodynamic calculation. False positives occur,
+        especially with AlphaFold receptors.
+      \end{alertblock}
     \end{column}
   \end{columns}
 \end{frame}

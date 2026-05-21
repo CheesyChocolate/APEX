@@ -28,7 +28,7 @@ Each section builds on the previous one, so by the end you should have a complet
 
 The numbers are familiar but still striking. Roughly twelve to fifteen years from target identification to regulatory approval, and around two and a half billion dollars per drug that makes it through — most of that cost absorbed by the compounds that fail late in clinical trials, not the eventual winner.
 
-The fundamental constraint is the size of chemical space. Drug-like molecules occupy an estimated 10 to the 60 compounds. Wet-lab high-throughput screening can handle at most a few million compounds, and only with significant infrastructure. Computational pre-filtering is how you make that search tractable — identify the one thousand most promising candidates so the wet lab tests those rather than sampling randomly.
+The fundamental constraint is the size of chemical space. Drug-like molecules occupy an estimated 10 to the 60 compounds. Wet-lab high-throughput screening can handle at most a few million compounds, and only with significant infrastructure. Computational pre-filtering is how you make that search tractable — identify the most promising candidates so the wet lab tests those rather than sampling randomly.
 
 The gap APEX addresses is automation. Existing tools like AutoDock Vina, RDKit, and ChEMBL are all mature and well-validated individually. But connecting them into a working pipeline for a new target has always required expert-level manual configuration: downloading structures, writing preprocessing scripts, tuning model hyperparameters, interpreting docking inputs. APEX wraps all of that into a single REST API call.
 
@@ -46,13 +46,9 @@ Stage two is preprocessing. Raw ChEMBL data is noisy: duplicate SMILES represent
 
 Stage three is QSAR training and prediction. A Random Forest classifier is trained on molecular fingerprints plus physicochemical descriptors, evaluated by five-fold cross-validation, then used to score the entire compound set by predicted activity probability.
 
-Stage four is candidate pre-selection — a step we added specifically to improve what gets sent to docking. QSAR ranking alone can produce twenty structurally identical compounds. We apply a Lipinski drug-likeness filter followed by a greedy diversity selection to ensure the top twenty cover distinct regions of chemical space.
+Stage four is candidate pre-selection. QSAR ranking alone can produce twenty structurally identical compounds. We apply a Lipinski drug-likeness filter followed by a greedy diversity selection to ensure the top twenty cover distinct regions of chemical space.
 
-Stage five is structure fetch. The platform retrieves the target's three-dimensional protein structure, trying AlphaFold first, then RCSB as a fallback.
-
-Stage six is AutoDock Vina docking. Each candidate ligand is prepared in three dimensions, the receptor is converted to PDBQT format, and Vina runs exhaustive search over the estimated binding region.
-
-Stage seven is the ranked output — binding affinities and poses returned to the frontend.
+Stages five through seven are structure fetch, AutoDock Vina docking, and the ranked output returned to the frontend.
 
 **NEXT SLIDE**
 
@@ -62,15 +58,13 @@ Stage seven is the ranked output — binding affinities and poses returned to th
 
 ChEMBL is the world's largest manually curated bioactivity database — over nineteen million measurements across more than two million compounds. APEX queries it via its REST API, filtering to IC50 measurements from human assays reported in nanomolar units. That filtering alone typically reduces the raw dataset by thirty to fifty percent before we write a single record to disk.
 
-The preprocessing pipeline after the fetch has several technically important steps. First, SMILES validation: every canonical SMILES string is parsed by RDKit's MolFromSmiles. Invalid strings are silently dropped; they account for roughly one to three percent of raw records.
+The preprocessing pipeline has several technically important steps. First, SMILES validation: every canonical SMILES string is parsed by RDKit's MolFromSmiles. Invalid strings are silently dropped.
 
 Second, fingerprint-based deduplication. Simply dropping duplicate SMILES strings is insufficient because the same molecular scaffold can appear under different SMILES representations — different atom orderings, different stereochemistry specification, tautomers. We compute a Morgan fingerprint for each valid molecule and use the bit-string as the deduplication key. This catches duplicates that SMILES comparison misses.
 
 Third, grey-zone dropping. Compounds with IC50 between one thousand and ten thousand nanomolar occupy a decision boundary that the binary classifier has no principled way to resolve. Including them during training increases label noise without adding useful signal. We drop them entirely.
 
-The remaining compounds are labeled: IC50 at or below one thousand nanomolar is active, above ten thousand is inactive, and the gap is empty by construction. The data is then stratified and split eighty-twenty into training and test sets.
-
-The SQLite cache is operationally essential. A ChEMBL fetch for a popular target takes ninety to a hundred and ten seconds on first call. With a seven-day TTL cache, every subsequent run — to change preprocessing parameters, try a different model, or add virtual screening compounds — returns in milliseconds.
+The remaining compounds are labeled: at or below one thousand nanomolar is active, above ten thousand is inactive. The data is then stratified and split eighty-twenty into training and test sets.
 
 **NEXT SLIDE**
 
@@ -82,11 +76,9 @@ QSAR — Quantitative Structure-Activity Relationship — is the idea that a mol
 
 APEX uses two complementary feature types. The primary feature is a Morgan fingerprint with radius two and 1024 bits. Morgan fingerprints are circular: they encode the local chemical environment around each atom by iteratively hashing the environments of neighboring atoms out to the specified bond radius. The result is a binary vector where each bit represents the presence or absence of a particular structural motif. They're invariant to SMILES notation, computationally cheap, and have strong empirical track records on bioactivity prediction.
 
-The secondary features are six physicochemical descriptors computed by RDKit: molecular weight, partition coefficient LogP, hydrogen bond donor count, hydrogen bond acceptor count, number of rotatable bonds, and number of aromatic rings. These capture properties orthogonal to fingerprints — particularly membrane permeability and conformational flexibility, which fingerprints do not directly encode. Concatenated, the full feature vector is 1030-dimensional.
+The secondary features are six physicochemical descriptors computed by RDKit: molecular weight, partition coefficient LogP, hydrogen bond donor count, hydrogen bond acceptor count, number of rotatable bonds, and number of aromatic rings. These capture properties orthogonal to fingerprints — particularly membrane permeability and conformational flexibility. Concatenated, the full feature vector is 1030-dimensional.
 
-The classifier is a Random Forest with 200 trees. We chose classification over regression for a specific reason: IC50 values in ChEMBL come from many different assay formats, cell types, and measurement protocols. The absolute numeric value is noisy across assays even for the same compound. Binary classification is more robust to that inter-assay noise than regression. Additionally, RandomForest's predict_proba output already provides a continuous probability score that we can rank — so we don't lose the ranking capability that regression would theoretically offer.
-
-The model is evaluated with five-fold stratified cross-validation before ever touching the test set. After cross-validation, it's retrained on the full training set and its weights serialized to disk. Subsequent prediction calls for the same target load the saved model rather than retraining.
+The classifier is a Random Forest with 200 trees. We chose classification over regression for a specific reason: IC50 values in ChEMBL come from many different assay formats and measurement protocols. The absolute numeric value is noisy across assays even for the same compound. Binary classification is more robust to that inter-assay noise. Additionally, RandomForest's predict_proba output already provides a continuous probability score that we can rank — so we don't lose the ranking capability that regression would theoretically offer.
 
 **NEXT SLIDE**
 
@@ -98,9 +90,9 @@ These two panels show the model output for CDK2. The training set contained 798 
 
 The left panel shows the predicted activity probability distribution, split by ground-truth label. The green distribution is compounds the model assigned high probability of activity; red is the inactive distribution. Notice the clean bimodal separation — active compounds cluster above 0.7, inactives cluster below 0.2. The overlap region around 0.4 to 0.6 is where the model is genuinely uncertain, which is expected: these are compounds near the one-micromolar IC50 boundary where the chemistry is borderline.
 
-The right panel ranks the top twenty predicted actives by probability score. Every compound exceeds the 0.5 decision threshold. The color coding distinguishes true positives from predicted actives that were labeled inactive in the test set — the false positives, which a technical audience would want to distinguish.
+The right panel ranks the top twenty predicted actives by probability score. Every compound exceeds the 0.5 decision threshold. The color coding distinguishes true positives from predicted actives that were labeled inactive in the test set.
 
-For CDK2, the cross-validated ROC-AUC is 0.943 with a standard deviation of 0.012 across folds. The test-set F1 score is 0.901. These are strong numbers for a 1030-dimensional dataset of roughly a thousand compounds, and they replicate consistently across reruns because of the fixed random seed. The AUC tells us the model separates the classes well; the F1 tells us precision and recall are balanced on the held-out data.
+For CDK2, the cross-validated ROC-AUC is 0.943 with a standard deviation of 0.012 across folds. The test-set F1 score is 0.901. These are strong numbers for a 1030-dimensional dataset of roughly a thousand compounds, and they replicate consistently across reruns because of the fixed random seed.
 
 **NEXT SLIDE**
 
@@ -110,86 +102,96 @@ For CDK2, the cross-validated ROC-AUC is 0.943 with a standard deviation of 0.01
 
 Before anything goes to docking, we apply a two-step pre-selection filter. This step exists because naive top-N selection by QSAR probability alone sends redundant compounds to the docking engine — the top twenty by probability might all share the same core scaffold, which means Vina is running twenty times for what is effectively one binding hypothesis.
 
-Step one is the Lipinski Rule of Five filter. This is the classic Lipinski oral bioavailability heuristic: molecular weight below 500 daltons, LogP below 5, no more than five hydrogen bond donors, no more than ten hydrogen bond acceptors, and TPSA below 140 square angstroms. Any predicted active that violates more than one of these is unlikely to be orally bioavailable and is removed from the candidate pool before docking. We have the descriptor values already from featurization, so this filter costs nothing computationally. If no compound passes — which can happen for peptide-like targets — we fall back to the full active pool rather than return an empty result.
+Step one is the Lipinski Rule of Five filter. This is the classic oral bioavailability heuristic: molecular weight below 500 daltons, LogP below 5, no more than five hydrogen bond donors, no more than ten hydrogen bond acceptors, and TPSA below 140 square angstroms. Any predicted active that fails these criteria is removed from the candidate pool. We have the descriptor values already from featurization, so this filter costs nothing computationally.
 
-Step two is max-min diversity selection. This is a greedy farthest-point algorithm operating on Tanimoto distances over Morgan fingerprints. We seed with the highest-probability drug-like compound, then iteratively select the compound that maximizes the minimum Tanimoto distance to all already-selected compounds. The Tanimoto distance is one minus the Jaccard similarity of the fingerprint bit vectors — it measures structural dissimilarity directly. This algorithm runs in O(n times k) time where n is the candidate pool size and k is the desired output size, which is fast enough to be imperceptible in the pipeline.
+Step two is max-min diversity selection. This is a greedy farthest-point algorithm operating on Tanimoto distances over Morgan fingerprints. We seed with the highest-probability drug-like compound, then iteratively select the compound that maximizes the minimum Tanimoto distance to all already-selected compounds. The Tanimoto distance is one minus the Jaccard similarity of the fingerprint bit vectors. This runs in O(n times k) time — fast enough to be imperceptible in the pipeline.
 
-The result is a set of twenty compounds that are simultaneously drug-like, predicted active, and maximally structurally distinct from each other. That diversity means each compound is exploring a different region of the binding pocket — which is exactly what you want to send to a docking run.
-
-**NEXT SLIDE**
-
----
-
-## Slide 9: AutoDock Vina Integration
-
-Molecular docking answers a different question than QSAR. QSAR asks: does this molecule look like known actives, based on structure and physicochemical properties? Docking asks: can this molecule physically fit into the target's binding site, and if so, what is the predicted thermodynamic cost of that binding?
-
-AutoDock Vina is the standard open-source docking tool. Its scoring function combines Gaussian steric terms, a hydrogen-bond energy term, a hydrophobic contact term, and an entropic penalty for restricting torsional rotations. The output is a predicted binding free energy in kilocalories per mole. The scale: values below minus nine kilocalories per mole correspond roughly to dissociation constants in the low nanomolar range, which is the target affinity for a useful drug candidate.
-
-Ligand preparation starts from SMILES. We use RDKit's ETKDGv3 algorithm to embed a three-dimensional conformer, optimize it with the MMFF94 force field, and convert to PDBQT via Open Babel. ETKDGv3 uses distance geometry with experimental torsion-angle constraints from the Cambridge Structural Database — it produces conformers that are geometrically realistic rather than just strain-minimized.
-
-Receptor preparation converts the PDB file to PDBQT using Open Babel's receptor mode, which strips waters and non-standard residues. The binding box is estimated in two tiers: if the receptor PDB already contains a co-crystal ligand as HETATM records, we use that ligand's centroid as the box center — this is the standard approach for crystal structure docking. If no co-crystal ligand is present, which is the case for AlphaFold-predicted structures, we fall back to the protein's geometric centroid with ten angstrom padding per axis, capped at thirty angstroms. Vina is run with exhaustiveness eight and returns up to five poses per ligand.
+The result is a set of twenty compounds that are simultaneously drug-like, predicted active, and maximally structurally distinct from each other — which maximises the chemical space explored in the docking run.
 
 **NEXT SLIDE**
 
 ---
 
-## Slide 10: Docking Results
+## Slide 9: AutoDock Vina: Molecule Preparation
 
-These plots show the docking output for the CDK2 case study. Twenty compounds, pre-selected by Lipinski filter and max-min diversity from the top QSAR predictions, were docked against the CDK2 AlphaFold structure.
+Molecular docking answers a different question than QSAR. Where QSAR asks "does this molecule look like known actives?", docking asks "can this molecule physically fit into the target's binding site, and if so, how tightly?"
 
-The left panel is the binding affinity distribution. The x-axis runs from most negative to least negative, so left is better. The cluster between minus seven and minus ten kilocalories per mole is a realistic distribution for drug-like molecules against a kinase ATP-binding site. The red dashed line marks the median at minus 8.2 kilocalories per mole.
+Before Vina can run, both ligand and receptor must be in PDBQT format, which encodes Gasteiger partial charges and marks rotatable bonds for the conformational search. For ligands, APEX starts from the SMILES string. RDKit's ETKDGv3 algorithm generates a three-dimensional conformer using distance geometry with torsion-angle constraints from the Cambridge Structural Database — producing geometrically realistic conformers rather than just strain-minimized ones. MMFF94 force-field minimization then relaxes the geometry. Open Babel handles the final conversion to PDBQT with the gen3d flag.
 
-The right panel ranks the twenty hits explicitly. The color scale marks the conventional strong-binder threshold at minus nine. Three of the twenty compounds score below that threshold, with the top hit reaching minus 9.5 kilocalories per mole. These three are the primary candidates that would move to experimental validation in a real campaign.
-
-It's worth being explicit about what this score means and doesn't mean. Vina's predicted free energy is a scoring function approximation, not a quantum-mechanical calculation. It correlates well with experimental IC50 in large benchmarks, but false positives are common, particularly for AlphaFold-predicted structures where the binding pocket geometry has not been experimentally validated. The docking step should be interpreted as a further filter that re-ranks QSAR candidates by structural complementarity — not as a final verdict on biological activity.
+For the receptor, the protein structure is fetched from AlphaFold or the RCSB PDB as described earlier. Open Babel's receptor mode strips waters and non-standard residues during PDBQT conversion. The binding box is estimated in two tiers. If the receptor PDB already contains a co-crystal ligand recorded as HETATM atoms, we use that ligand's geometric centroid as the box center — this is the standard approach for structure-based docking because it places the search space directly over the experimentally confirmed binding site. If no co-crystal ligand is present, which is the common case for AlphaFold-predicted structures, we fall back to the protein's geometric centroid with ten angstrom padding per axis, capped at thirty angstroms. Users who know the binding site from literature can also supply explicit box coordinates via the API.
 
 **NEXT SLIDE**
 
 ---
 
-## Slide 11: Case Study — Cyclin-Dependent Kinase 2 (CDK2)
+## Slide 10: AutoDock Vina: Scoring \& Search
 
-CDK2 is a serine/threonine kinase that drives the G1-to-S transition in the cell cycle. Its overexpression or deregulation is implicated in a wide range of cancers, and it has been one of the most intensively studied kinase targets in oncology for the past twenty years. For our purposes, it's an ideal validation target: thousands of published bioactivity measurements in ChEMBL, extensive structural coverage in the PDB, and well-established SAR that we can sanity-check against.
+Vina's scoring function is an empirical weighted sum of five energy terms. The steric term uses a Gaussian function of interatomic distance to capture van der Waals repulsion and attraction. The hydrogen-bond term rewards geometrically favorable donor-acceptor contacts. The hydrophobic term rewards contacts between non-polar atoms, encoding the desolvation contribution to binding. The torsional entropy penalty accounts for the loss of conformational freedom when a flexible ligand binds — more rotatable bonds means a larger entropy cost. The output is a predicted binding free energy in kilocalories per mole.
 
-The APEX run on CDK2 retrieved 998 IC50 measurements from ChEMBL on the first fetch, which took 110 seconds. After preprocessing — SMILES validation, fingerprint deduplication, grey-zone dropping — 998 compounds remained, split into 798 training and 200 test compounds. The grey-zone drop had minimal effect here because CDK2's literature is relatively clean, but for noisier targets it removes fifteen to twenty percent of records.
+The practical scale: values at or below minus nine kilocalories per mole correspond roughly to dissociation constants in the low nanomolar range, which is the target affinity for a useful drug lead. Values around minus seven to minus eight are moderate; values above minus five are weak binders that would not typically proceed in a drug discovery campaign.
 
-The QSAR model trained in under thirty seconds and achieved the metrics shown earlier. Twenty compounds were pre-selected by Lipinski filter and max-min diversity from the top QSAR actives. The docking run against the AlphaFold P24941 structure, with the binding box centered on the protein centroid, completed in roughly five minutes for twenty ligands. The top hit achieved minus 9.478 kilocalories per mole, with three compounds below minus nine.
+Exhaustiveness controls how many independent Monte Carlo optimization runs Vina performs. The default of eight is a reasonable trade-off between thoroughness and runtime. For each ligand, up to five poses are returned, ranked by score. We report the best score as the primary affinity and use the RMSD between poses as a measure of docking confidence — tightly clustered poses suggest the model is confident about the binding mode.
 
-Total wall-clock time from target ID to ranked docking results, excluding the one-time ChEMBL cache build, is under four minutes. The ChEMBL fetch itself is the only step that cannot be cached on first use.
+It's worth being explicit about the limitation: Vina's score is a scoring function approximation, not a quantum-mechanical free energy calculation. It correlates with experimental data in large benchmarks but false positives are common, particularly against AlphaFold-predicted structures where the binding pocket geometry has not been experimentally validated. Treat the docking step as a further filter that re-ranks candidates by structural complementarity — not as a final verdict on biological activity.
 
 **NEXT SLIDE**
 
 ---
 
-## Slide 12: APEX Web Platform
+## Slide 11: Docking Results
+
+These plots show the docking output for the CDK2 case study. Twenty compounds, pre-selected by Lipinski filter and max-min diversity, were docked against the CDK2 AlphaFold structure.
+
+The left panel is the binding affinity distribution. The cluster between minus seven and minus ten kilocalories per mole is a realistic distribution for drug-like molecules against a kinase ATP-binding site. The red dashed line marks the median at minus 8.2 kilocalories per mole.
+
+The right panel ranks the twenty hits explicitly. Three compounds score below minus nine — the strong-binder threshold — with the top hit reaching minus 9.5 kilocalories per mole. These three are the candidates that would move to experimental validation in a real campaign.
+
+**NEXT SLIDE**
+
+---
+
+## Slide 12: Case Study — Cyclin-Dependent Kinase 2 (CDK2)
+
+CDK2 is a serine/threonine kinase that drives the G1-to-S transition in the cell cycle. Its overexpression or deregulation is implicated in a wide range of cancers, and it has been one of the most intensively studied kinase targets in oncology for the past twenty years. For our purposes it's an ideal validation target: thousands of published bioactivity measurements in ChEMBL, extensive structural coverage in the PDB, and well-established SAR.
+
+The APEX run on CDK2 retrieved 998 IC50 measurements from ChEMBL on the first fetch, which took 110 seconds. After preprocessing — SMILES validation, fingerprint deduplication, grey-zone dropping — the dataset was split into 798 training and 200 test compounds. The QSAR model trained in under thirty seconds and achieved CV AUC 0.943 and F1 0.901.
+
+Twenty compounds were pre-selected by Lipinski filter and max-min diversity from the top QSAR actives. The docking run against the AlphaFold P24941 structure completed in roughly five minutes for twenty ligands. The top hit achieved minus 9.478 kilocalories per mole, with three of the twenty compounds below minus nine.
+
+Total wall-clock time from target ID to ranked docking results, excluding the one-time ChEMBL cache build, is under four minutes.
+
+**NEXT SLIDE**
+
+---
+
+## Slide 13: APEX Web Platform
 
 The platform is designed so that a biologist with no command-line experience can run the full pipeline, and a computational chemist can use the REST API directly without touching the frontend.
 
-The backend is FastAPI — a Python ASGI framework that generates OpenAPI documentation automatically and validates all inputs via Pydantic schemas. The four endpoints cover the complete pipeline: target search, QSAR training and prediction, structure retrieval, and docking. The docking endpoint accepts optional box_center and box_size parameters — three-element float arrays in angstroms — so a researcher who knows the experimental binding site can bypass the automatic estimation entirely and supply precise coordinates.
+The backend is FastAPI — a Python ASGI framework that generates OpenAPI documentation automatically and validates all inputs via Pydantic schemas. The four endpoints cover the complete pipeline: target search, QSAR training and prediction, structure retrieval, and docking. The docking endpoint accepts optional box_center and box_size parameters — three-element float arrays in angstroms — so a researcher who knows the experimental binding site can bypass the automatic estimation entirely.
 
-The QSAR endpoint now supports two operating modes. In demo mode, the model trains on ChEMBL data and predicts on the ChEMBL test split — useful for benchmarking and demonstration. In virtual screening mode, the user supplies their own compound library as SMILES strings, either via CSV upload where the SMILES column is auto-detected by header keyword, or by pasting SMILES directly into the interface. This is the scientifically meaningful workflow: train on known ChEMBL actives, then predict on a novel library to identify new scaffolds.
+The QSAR endpoint supports two operating modes. In demo mode, the model predicts on the ChEMBL test split. In virtual screening mode, the user supplies their own compound library as SMILES strings via CSV upload — where the SMILES column is auto-detected by header keyword — or by pasting SMILES directly into the interface. This is the scientifically meaningful workflow: train on known ChEMBL actives, then predict on a novel library to identify new scaffolds.
 
-The frontend is a React single-page application served as a static file by the FastAPI backend on the same origin — which eliminates all CORS complexity. There is no build step and no Node.js dependency; the single HTML file loads React from a CDN and communicates with the backend API. The interface provides a sidebar for target search and run history, a real-time log showing each pipeline stage as it executes, sortable QSAR and docking results tables, and a compound compare overlay for side-by-side inspection of shortlisted candidates.
+The frontend is a React single-page application served as a static file by the FastAPI backend on the same origin, eliminating all CORS complexity. There is no build step and no Node.js dependency. The interface provides a sidebar for target search and run history, a real-time log showing each pipeline stage as it executes, sortable QSAR and docking results tables, and a compound compare overlay for side-by-side inspection of shortlisted candidates.
 
 **NEXT SLIDE**
 
 ---
 
-## Slide 13: Summary \& Future Work
+## Slide 14: Summary \& Future Work
 
-APEX delivers end-to-end automated drug candidate screening. The pipeline covers six distinct computational stages — ChEMBL ingestion, preprocessing, QSAR training and prediction, Lipinski and diversity pre-selection, structure retrieval, and AutoDock Vina docking — with a REST API and a web frontend that makes the results accessible without a computational background.
+APEX delivers end-to-end automated drug candidate screening across six computational stages — ChEMBL ingestion, preprocessing, QSAR training and prediction, Lipinski and diversity pre-selection, structure retrieval, and AutoDock Vina docking — with a REST API and a web frontend that makes the results accessible without a computational background.
 
 The CDK2 case study validates each stage: a QSAR classifier with cross-validated AUC 0.943 and F1 0.901, followed by a diversity-filtered candidate set, followed by docking that identifies three compounds with predicted affinities below minus nine kilocalories per mole. The full run completes in under ten minutes.
 
-The three most impactful planned extensions are: first, integration of a large virtual compound library such as Enamine REAL — seven billion commercially purchasable compounds — so the QSAR model screens a genuinely novel chemical space rather than re-ranking known ChEMBL compounds. Second, ensemble QSAR models including XGBoost and graph neural networks, which capture longer-range structural motifs that Morgan fingerprints miss. Third, automated binding-site detection via fpocket or P2Rank rather than centroid estimation — particularly important for AlphaFold structures where no experimental co-crystal ligand is available to anchor the docking box.
+The three most impactful planned extensions are: large virtual library integration such as Enamine REAL with seven billion purchasable compounds; ensemble QSAR models including XGBoost and graph neural networks; and automated binding-site detection via fpocket or P2Rank rather than centroid estimation — particularly important for AlphaFold structures where no experimental co-crystal ligand is available.
 
 **NEXT SLIDE**
 
 ---
 
-## Slide 14: Questions?
+## Slide 15: Questions?
 
-Thank you. I'm happy to go into more detail on any layer of the stack — the fingerprint deduplication logic, the max-min diversity algorithm, why we chose classification over regression, the Vina scoring function, the PDBQT preparation pipeline, or the frontend architecture.
+Thank you. I'm happy to go into more detail on any layer of the stack — the fingerprint deduplication logic, the max-min diversity algorithm, the classification versus regression trade-off, the Vina scoring function, the PDBQT preparation pipeline, or the frontend architecture.
 
 **END OF PRESENTATION**
