@@ -46,6 +46,8 @@ class DockingRequest(BaseModel):
     uniprot_id: str
     pdb_id: str | None = None
     smiles_list: list[str]
+    box_center: list[float] | None = None  # [x, y, z] in Å
+    box_size: list[float] | None = None  # [x, y, z] in Å
 
 
 class DockingResult(BaseModel):

@@ -1,8 +1,10 @@
+import io
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
+import requests
 from app.core.config import VINA_EXHAUSTIVENESS
 from app.core.exceptions import DockingError
 from app.core.logging import get_logger
@@ -10,6 +12,9 @@ from rdkit.Chem import AddHs, MolFromSmiles, MolToMolBlock
 from rdkit.Chem.AllChem import EmbedMolecule, MMFFOptimizeMolecule
 
 logger = get_logger(__name__)
+
+_RCSB_SEARCH_URL = "https://search.rcsb.org/rcsbsearch/v2/query"
+_RCSB_PDB_URL = "https://files.rcsb.org/download/{pdb_id}.pdb"
 
 # Use the obabel binary bundled in the project's own venv.
 _VENV_BIN = Path(sys.executable).parent
@@ -52,16 +57,115 @@ def _receptor_to_pdbqt(receptor_pdb: Path, work_dir: Path) -> Path:
 
 
 _HETATM_EXCLUDE = {"HOH", "WAT", "SO4", "PO4", "GOL", "EDO", "PEG", "MPD"}
+_BOX_SIZE_LIGAND = 22.5  # Å — standard search space around a known binding site
 
 
-def _get_box(receptor_pdb: Path) -> dict:
+def _hetatm_centroid(structure):
+    """Return centroid of non-solvent HETATM atoms, or None if none exist."""
+    import numpy as np
+
+    coords = [
+        atom.coord
+        for residue in structure.get_residues()
+        if residue.id[0] not in (" ", "W") and residue.resname not in _HETATM_EXCLUDE
+        for atom in residue.get_atoms()
+    ]
+    if not coords:
+        return None
+    logger.info("Binding box from co-crystal ligand (%d HETATM atoms)", len(coords))
+    return np.array(coords).mean(axis=0)
+
+
+def _box_from_rcsb_cocrystal(uniprot_id: str) -> dict | None:
     """
-    Estimate docking box center and size.
+    Query RCSB for any co-crystal PDB entry of this target that contains a bound
+    small-molecule ligand, then return the ligand centroid as the docking box centre.
+    Returns None on any failure so the caller falls back gracefully.
+    """
+    from Bio.PDB import PDBParser
 
-    For co-crystal PDB files: uses HETATM ligand centroid as binding-site centre
-    (standard practice for structure-based docking). For AlphaFold structures (no
-    bound ligand): falls back to protein geometric centroid — a known limitation,
-    since AlphaFold models have no experimental ligand to anchor the box.
+    query = {
+        "query": {
+            "type": "group",
+            "logical_operator": "and",
+            "nodes": [
+                {
+                    "type": "terminal",
+                    "service": "text",
+                    "parameters": {
+                        "attribute": (
+                            "rcsb_polymer_entity_container_identifiers"
+                            ".reference_sequence_identifiers.database_accession"
+                        ),
+                        "operator": "exact_match",
+                        "value": uniprot_id,
+                    },
+                },
+                {
+                    "type": "terminal",
+                    "service": "text",
+                    "parameters": {
+                        "attribute": "rcsb_entry_info.nonpolymer_entity_count",
+                        "operator": "greater",
+                        "value": 0,
+                    },
+                },
+            ],
+        },
+        "return_type": "entry",
+        "request_options": {"paginate": {"start": 0, "rows": 10}},
+    }
+
+    try:
+        resp = requests.post(_RCSB_SEARCH_URL, json=query, timeout=15)
+        if resp.status_code != 200:
+            logger.warning("RCSB search %d for %s", resp.status_code, uniprot_id)
+            return None
+        hits = resp.json().get("result_set", [])
+    except Exception as exc:
+        logger.warning("RCSB binding-site lookup failed: %s", exc)
+        return None
+
+    if not hits:
+        logger.info("No PDB co-crystal entries found for UniProt %s", uniprot_id)
+        return None
+
+    parser = PDBParser(QUIET=True)
+    for hit in hits:
+        pdb_id = hit["identifier"]
+        try:
+            pdb_resp = requests.get(_RCSB_PDB_URL.format(pdb_id=pdb_id), timeout=30)
+            if pdb_resp.status_code != 200:
+                continue
+            structure = parser.get_structure(pdb_id, io.StringIO(pdb_resp.text))
+            center = _hetatm_centroid(structure)
+            if center is None:
+                continue
+            logger.info(
+                "Binding site sourced from PDB %s (UniProt %s)", pdb_id, uniprot_id
+            )
+            return {
+                "center_x": float(center[0]),
+                "center_y": float(center[1]),
+                "center_z": float(center[2]),
+                "size_x": _BOX_SIZE_LIGAND,
+                "size_y": _BOX_SIZE_LIGAND,
+                "size_z": _BOX_SIZE_LIGAND,
+            }
+        except Exception as exc:
+            logger.debug("Skipping PDB %s: %s", pdb_id, exc)
+
+    logger.info("No usable co-crystal ligand found in RCSB for %s", uniprot_id)
+    return None
+
+
+def _get_box(receptor_pdb: Path, uniprot_id: str | None = None) -> dict:
+    """
+    Resolve docking search box with a three-tier priority:
+      1. HETATM ligand in the supplied receptor PDB (co-crystal structure).
+      2. RCSB lookup: find a related PDB entry with a bound ligand (used when the
+         receptor is an AlphaFold model with no co-crystal ligand).
+      3. Protein geometric centroid — last resort, logs a WARNING.
     """
     import numpy as np
     from Bio.PDB import PDBParser
@@ -69,43 +173,43 @@ def _get_box(receptor_pdb: Path) -> dict:
     parser = PDBParser(QUIET=True)
     structure = parser.get_structure("rec", str(receptor_pdb))
 
-    # Collect HETATM coordinates, excluding solvent and common crystallography
-    # artifacts so that an actual small-molecule ligand drives the box centre.
-    het_coords = [
-        atom.coord
-        for residue in structure.get_residues()
-        if residue.id[0] not in (" ", "W")  # HETATM flag != standard AA or water
-        and residue.resname not in _HETATM_EXCLUDE
-        for atom in residue.get_atoms()
-    ]
+    # Tier 1 — ligand already present in the receptor file
+    center = _hetatm_centroid(structure)
+    if center is not None:
+        all_coords = np.array([atom.coord for atom in structure.get_atoms()])
+        size = (all_coords.max(0) - all_coords.min(0)) * 0.5 + 10
+        size = size.clip(max=_BOX_SIZE_LIGAND)
+        return {
+            "center_x": float(center[0]),
+            "center_y": float(center[1]),
+            "center_z": float(center[2]),
+            "size_x": float(size[0]),
+            "size_y": float(size[1]),
+            "size_z": float(size[2]),
+        }
 
-    if het_coords:
-        center_arr = np.array(het_coords).mean(axis=0)
-        logger.info(
-            "Binding box centred on co-crystal ligand (%d HETATM atoms)",
-            len(het_coords),
-        )
-    else:
-        # AlphaFold or ligand-free PDB: fall back to protein centroid
-        all_coords = [atom.coord for atom in structure.get_atoms()]
-        if not all_coords:
-            raise DockingError("No atoms found in receptor PDB")
-        center_arr = np.array(all_coords).mean(axis=0)
-        logger.warning(
-            "No co-crystal ligand found — using protein centroid as docking box "
-            "centre (approximation; binding site may not be at centroid)"
-        )
+    # Tier 2 — look up a co-crystal PDB on RCSB for this UniProt target
+    if uniprot_id:
+        box = _box_from_rcsb_cocrystal(uniprot_id)
+        if box:
+            return box
 
-    # Box size: span of protein backbone + 10 Å padding, capped at 30 Å per axis
-    backbone = [atom.coord for atom in structure.get_atoms()]
-    arr = np.array(backbone)
-    size = (arr.max(axis=0) - arr.min(axis=0)) * 0.5 + 10
+    # Tier 3 — fall back to protein centroid (AlphaFold with no known ligand)
+    all_coords = [atom.coord for atom in structure.get_atoms()]
+    if not all_coords:
+        raise DockingError("No atoms found in receptor PDB")
+    arr = np.array(all_coords)
+    center = arr.mean(axis=0)
+    size = (arr.max(0) - arr.min(0)) * 0.5 + 10
     size = size.clip(max=30)
-
+    logger.warning(
+        "Docking box falls back to protein centroid — binding site unknown for %s",
+        uniprot_id or receptor_pdb.name,
+    )
     return {
-        "center_x": float(center_arr[0]),
-        "center_y": float(center_arr[1]),
-        "center_z": float(center_arr[2]),
+        "center_x": float(center[0]),
+        "center_y": float(center[1]),
+        "center_z": float(center[2]),
         "size_x": float(size[0]),
         "size_y": float(size[1]),
         "size_z": float(size[2]),
@@ -134,12 +238,21 @@ def _dock_one(receptor_pdbqt: Path, ligand_pdbqt: Path, box: dict) -> dict:
     return {"affinity_kcal_mol": best_score, "conformers": n, "rmsd": rmsd}
 
 
-def run(receptor_pdb: Path, smiles_list: list[str]) -> list[dict]:
+def run(
+    receptor_pdb: Path,
+    smiles_list: list[str],
+    uniprot_id: str | None = None,
+    box_override: dict | None = None,
+) -> list[dict]:
     if not smiles_list:
         return []
 
     results = []
-    box = _get_box(receptor_pdb)
+    if box_override:
+        box = box_override
+        logger.info("Using user-supplied docking box")
+    else:
+        box = _get_box(receptor_pdb, uniprot_id)
     logger.info(
         "Docking box: center=(%.1f, %.1f, %.1f) size=(%.1f, %.1f, %.1f)",
         box["center_x"],
